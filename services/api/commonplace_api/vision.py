@@ -59,7 +59,7 @@ async def detect(settings: Settings, image: bytes, room: str) -> list[Detection]
         async with httpx.AsyncClient(timeout=httpx.Timeout(45, connect=10)) as client:
             response = await client.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent",
-                headers={"x-goog-api-key": settings.gemini_api_key},
+                headers={"x-goog-api-key": settings.vision_api_key},
                 json={
                     "contents": [{"parts": [
                         {"text": prompt},

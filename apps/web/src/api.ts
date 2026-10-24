@@ -16,12 +16,21 @@ export async function api<T>(path: string, token?: string, init: RequestInit = {
   try {
     response = await fetch(path, { ...init, headers });
   } catch {
-    throw new ApiError('Could not reach the API. Start the backend on port 8000 and try again.', 0);
+    throw new ApiError(
+      path.startsWith('/api/lab/')
+        ? 'Could not reach Muse chat. Start make muse-api on port 8002 and try again.'
+        : 'Could not reach the household API. Start make api on port 8000, or open Muse chat for an independent conversation.',
+      0,
+    );
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const detail =
-      typeof body.detail === 'string' ? body.detail : 'The request could not be completed.';
+      typeof body.detail === 'string'
+        ? body.detail
+        : path.startsWith('/api/lab/') && response.status >= 500
+          ? 'Muse chat is unavailable. Start make muse-api on port 8002 and retry.'
+          : 'The request could not be completed.';
     throw new ApiError(detail, response.status);
   }
   return response.json() as Promise<T>;

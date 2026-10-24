@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DemoSessionRequest(BaseModel):
@@ -90,3 +90,34 @@ class ConnectorSearchResponse(BaseModel):
     matches: list[ObjectResponse]
     needs_disambiguation: bool
     guidance: str
+
+
+class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    message: str = Field(min_length=1, max_length=1000)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=8)
+
+
+class ChatResponse(BaseModel):
+    provider: Literal["gemini", "muse"] = "gemini"
+    answer: str
+    query: str
+    matches: list[ObjectResponse]
+    total_matches: int
+    needs_disambiguation: bool
+
+
+class PlainChatResponse(BaseModel):
+    provider: Literal["muse"] = "muse"
+    answer: str
+
+
+class TranscriptResponse(BaseModel):
+    text: str
+    provider: Literal["muse"] = "muse"

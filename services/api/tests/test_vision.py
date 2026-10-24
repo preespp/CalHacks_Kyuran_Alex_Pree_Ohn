@@ -24,7 +24,9 @@ def mock_gemini(monkeypatch, response_data, status=200):
 def test_gemini_converts_documented_yx_coordinates(tmp_path, monkeypatch):
     output = {"objects": [{"label": "Adapter", "appearance": "Silver", "location": "On the desk", "box_2d": [200, 100, 500, 400]}]}
     mock_gemini(monkeypatch, {"candidates": [{"content": {"parts": [{"text": json.dumps(output)}]}}]})
-    result = asyncio.run(detect(Settings(data_dir=tmp_path, gemini_api_key="test-secret", gemini_model="test"), b"image", "Office"))
+    result = asyncio.run(detect(Settings(data_dir=tmp_path, gemini_api_key="legacy-key-must-not-be-used",
+                                         gemini_chat_api_key="chat-key-must-not-be-used", gemini_vision_api_key="test-secret",
+                                         gemini_model="test"), b"image", "Office"))
     assert result[0].bbox == [.1, .2, .4, .5]
 
 

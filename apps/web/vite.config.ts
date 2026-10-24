@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     allowedHosts: process.env.DEV_ALLOWED_HOST ? [process.env.DEV_ALLOWED_HOST] : [],
-    proxy: { '/api': process.env.API_PROXY_TARGET || 'http://127.0.0.1:8000' },
+    proxy: {
+      '/api/lab': process.env.MUSE_PROXY_TARGET || 'http://127.0.0.1:8002',
+      '/api': process.env.API_PROXY_TARGET || 'http://127.0.0.1:8000',
+    },
   },
 });

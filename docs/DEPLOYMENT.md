@@ -19,7 +19,7 @@ Container-local files disappear when the container stops or restarts, so `.data/
 
 Test real Gemini capture locally before the cloud deployment. Use several distinctive objects, verify box placement after image rotation, and exercise quota/error responses. Set per-member upload limits for the public endpoint. Enable sample seeding only in an intentional demo environment.
 
-The background worker, embeddings, on-device inference, and SLAM can remain later milestones if deliberate captures meet the demo's needs. Complete and test the Muse account connection before demonstrating it as a working integration.
+The background worker, embeddings, on-device inference, and SLAM can remain later milestones if deliberate captures meet the demo's needs. Test the in-app Muse assistant using [the two-person runbook](MUSE_TESTING.md), including fresh updates, unknown/ambiguous matches, and quota failures. Add per-member chat rate/concurrency limits and project spending controls before public access. No consumer Muse connector is required. Do not deploy the local `/api/lab` sandbox; only deploy the authenticated full app.
 
 ## 2. Use one public app origin for the first release
 
@@ -31,7 +31,8 @@ app.yourdomain.com
         built React frontend at /
         FastAPI routes at /api
         production sign-in and authorization
-    ├── Gemini API
+    ├── Meta Model API (Muse chat and transcription)
+    ├── Gemini API (vision)
     ├── SpacetimeDB shared state
     └── private Azure Blob Storage
 ```
@@ -124,21 +125,26 @@ In the Azure portal, create the Container App using that registry image and tag:
 
 - Attach the managed identity and select it for private registry authentication.
 - Enable external HTTP ingress; target port **8080**, with HTTPS enforced.
-- Add the Gemini key and any final SpacetimeDB/service credentials under **Secrets**. Reference them from environment variables. Keep credentials out of shell command arguments, image layers, frontend configuration, and Git.
+- Add the Meta Model API key, Gemini vision key, and any final SpacetimeDB/service credentials under **Secrets**. Reference them from environment variables. Keep credentials out of shell command arguments, image layers, frontend configuration, and Git.
 - Set the ordinary environment variables below, plus the real-auth/SpacetimeDB settings defined by the finished integration.
 - Start with a small CPU/memory allocation and a bounded replica count. Keeping one replica warm during certificate issuance and the hackathon demo avoids a cold-start surprise; it also has a running cost.
-- Configure startup/liveness and readiness probes. `/api/health` currently reports process configuration, not dependency readiness; add a separate readiness check for required remote state. Do not make paid Gemini calls on every probe.
+- Configure startup/liveness and readiness probes. `/api/health` currently reports process configuration, not dependency readiness; add a separate readiness check for required remote state. Do not make paid model calls on every probe.
 
-| Environment variable        | Release value                                   |
-| --------------------------- | ----------------------------------------------- |
-| `APP_ENV`                   | `production`, once implemented and tested       |
-| `VISION_PROVIDER`           | `gemini`                                        |
-| `GEMINI_API_KEY`            | Reference to the app secret                     |
-| `GEMINI_MODEL`              | Tested model ID available to your project       |
-| `STORAGE_PROVIDER`          | `azure`                                         |
-| `AZURE_STORAGE_ACCOUNT_URL` | Your storage account URL                        |
-| `AZURE_STORAGE_CONTAINER`   | `scene-images`                                  |
-| `AZURE_CLIENT_ID`           | The attached user-assigned identity's client ID |
+| Environment variable             | Release value                                   |
+| -------------------------------- | ----------------------------------------------- |
+| `APP_ENV`                        | `production`, once implemented and tested       |
+| `VISION_PROVIDER`                | `gemini`                                        |
+| `MODEL_API_KEY`                  | Reference to the Meta Model API app secret      |
+| `META_MODEL`, `META_VOICE_MODEL` | Tested Muse chat/transcription model IDs        |
+| `GEMINI_CHAT_API_KEY`            | Optional previous Gemini adapter secret         |
+| `GEMINI_VISION_API_KEY`          | Reference to the vision team's app secret       |
+| `GEMINI_MODEL`                   | Tested model ID available to your project       |
+| `ASSISTANT_PROVIDER`             | `muse` after live assistant verification        |
+| `GEMINI_CHAT_MODEL`              | Optional previous Gemini adapter model ID       |
+| `STORAGE_PROVIDER`               | `azure`                                         |
+| `AZURE_STORAGE_ACCOUNT_URL`      | Your storage account URL                        |
+| `AZURE_STORAGE_CONTAINER`        | `scene-images`                                  |
+| `AZURE_CLIENT_ID`                | The attached user-assigned identity's client ID |
 
 See [Container Apps deployment](https://learn.microsoft.com/en-us/azure/container-apps/quickstart-code-to-cloud) and [health probes](https://learn.microsoft.com/en-us/azure/container-apps/health-probes).
 
@@ -184,7 +190,7 @@ dig +short CNAME app.yourdomain.com
 dig +short TXT asuid.app.yourdomain.com
 ```
 
-When Azure shows the hostname as secured, open the custom HTTPS URL and repeat the phone test. Add the exact new callback/origin to the sign-in provider and update Muse's connector URL to the custom `/api/connector/search` endpoint. Configure both root and `www` separately if you later want those hostnames too.
+When Azure shows the hostname as secured, open the custom HTTPS URL and repeat the phone and Ask Muse and microphone/read-aloud tests. Add the exact new callback/origin to the sign-in provider. The assistant uses the same-origin `/api/chat` route and needs no external connector URL. Configure both root and `www` separately if you later want those hostnames too.
 
 ## 8. Release future changes and keep a rollback
 

@@ -20,7 +20,9 @@ Install SpacetimeDB with its [official installer](https://spacetimedb.com/instal
 2. Create/select a project and create an API key.
 3. Check the models and quotas available to that project.
 4. Test one real demo photo using an image-capable model with structured-output support.
-5. Set `VISION_PROVIDER=gemini`, `GEMINI_API_KEY`, and `GEMINI_MODEL` in the root `.env`, then restart the API.
+5. For computer vision, set `VISION_PROVIDER=gemini`, `GEMINI_VISION_API_KEY`, and `GEMINI_MODEL` in the root `.env`, then restart the API.
+
+The user-facing assistant now uses **Meta Muse**, with separate `MODEL_API_KEY` / `META_MODEL` settings. Gemini vision does not use that key. To work on the assistant without the database or vision team, follow [Muse UI setup](MUSE_TESTING.md) and run `make muse-api` + `make muse-web` at `/muse`. All secrets stay in the repository-root `.env`, never `VITE_*` or frontend source. The old Gemini assistant and standalone script remain optional compatibility experiments; they are not part of the Muse flow.
 
 The API uses the official REST `generateContent` endpoint. Account availability, rate limits, and supported models can change; choose the model from your own project rather than copying a guessed model ID. See [API key setup](https://ai.google.dev/gemini-api/docs/api-key) and [image understanding](https://ai.google.dev/gemini-api/docs/image-understanding).
 
@@ -54,18 +56,15 @@ The container must already exist. Sample illustrations remain repository assets.
 
 For a future Container Apps deployment, use managed identity for blob access, attach durable storage or complete the SpacetimeDB migration, replace demo authentication, and set backend secrets through the deployment platform. The current startup guard deliberately rejects production mode with demo identities.
 
-## Muse connector
+## Meta Muse assistant and voice
 
-1. Sign in to [Muse](https://muse.ai/).
-2. Confirm with the Meta booth how your hackathon account can attach a custom authenticated API or MCP service.
-3. Make the development API reachable through HTTPS after confirming the demo-data access boundary.
-4. Describe the `search_household_memory` operation using the API's `/openapi.json` schema.
-5. Connect it to `GET /api/connector/search?q=...` with a bearer credential authorized for the intended household.
-6. Test: “Where did we leave the HDMI adapter?” Verify that the answer includes source, time, and the distinction between member-reported and visually observed locations.
+1. Redeem the hackathon credit using the Meta booth's instructions and check its product/model eligibility and expiry in your Meta developer project.
+2. Create a **Meta Model API** key and set `MODEL_API_KEY` in the backend `.env`.
+3. Set `META_MODEL` to an enabled Muse Spark model, for example `muse-spark-1.3`, and leave `META_VOICE_MODEL=muse-voice-transcribe-1.0` unless your dashboard/docs specify another enabled model.
+4. Follow [the Muse testing guide](MUSE_TESTING.md) for independent text, microphone, and read-aloud checks. No database, Gemini key, Azure, domain, or consumer Muse account linking is required for that UI.
+5. Later, enable `ASSISTANT_PROVIDER=muse` and use the full app to test a shared household report from another member.
 
-The starter endpoint is read-only. The local `/api/demo/session` response supplies a short-lived development bearer token; it is not a production connector credential or OAuth flow. Do not embed it in checked-in manifests, URLs, screenshots, or prompts. A production connector needs proper sign-in/delegation, revocation, and an account-scoped permission flow.
-
-The repository does not automatically register a connector, impersonate Muse, or claim that directory approval has occurred. Follow [Meta's connector guidance](https://platform.muse.ai/docs) and the hackathon's account-specific instructions.
+Muse Voice Transcribe converts audio to text; browser speech synthesis reads the answer aloud. Tap **Talk to Muse** for automatic pause detection, sending, spoken replies, and follow-up listening; stop the session to type. Manual dictation remains available. Optional **Enable Hello** uses browser speech recognition while the page is visible, with explicit consent and a spoken acknowledgement. It may use the browser vendor’s remote recognition service and cannot run with the browser closed. See [accessible voice setup](ACCESSIBILITY.md). It is not an OS wake-word service or a continuous speech-to-speech API. Account access and browser voice behavior require live testing. The optional external search gateway is a separate experiment and is not needed for Model API chat.
 
 ## Team design and domain
 

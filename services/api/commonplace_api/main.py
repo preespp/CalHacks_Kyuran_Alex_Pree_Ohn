@@ -11,9 +11,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.concurrency import run_in_threadpool
 
 from .config import ROOT, Settings
+from .assistant import AssistantError, answer_question
+from .memory import search_household_memory
+from .muse import memory_reply
+from .voice import transcribe
 from .models import (
-    ActivityResponse, CaptureResponse, ConnectorSearchResponse, DemoSessionRequest,
-    Detection, HistoryResponse, MemberResponse, NoteRequest, SearchResponse, SessionResponse,
+    ActivityResponse, CaptureResponse, ChatRequest, ChatResponse, ConnectorSearchResponse, DemoSessionRequest,
+    Detection, HistoryResponse, MemberResponse, NoteRequest, SearchResponse, SessionResponse, TranscriptResponse,
 )
 from .storage import create_storage
 from .store import Store, now
@@ -49,6 +53,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"status": "ok", "vision_provider": settings.vision_provider, "storage_provider": settings.storage_provider,
+                "assistant_provider": settings.assistant_provider,
                 "memory_provider": "sqlite", "auth_mode": "demo", "sync_mode": "polling"}
 
     @app.post("/api/demo/session", response_model=SessionResponse)
@@ -146,9 +151,30 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/api/connector/search", operation_id="search_household_memory", response_model=ConnectorSearchResponse)
     def connector_search(q: str = Query(..., min_length=1, max_length=200), actor=Depends(member)):
         """Read-only household memory search. Results are evidence, not proof of current location."""
-        matches = store.objects(actor["household_id"], q)
-        return {"query": q, "matches": matches, "needs_disambiguation": len(matches) > 1,
-                "guidance": "Describe locations as last seen or member reported. Cite the source and timestamp. Do not infer unseen movement."}
+        return search_household_memory(store, actor["household_id"], q)
+
+    @app.post("/api/chat", response_model=ChatResponse)
+    async def chat(body: ChatRequest, actor=Depends(member)):
+        if settings.assistant_provider not in {"muse", "gemini"}:
+            raise HTTPException(409, "Enable ASSISTANT_PROVIDER=muse with MODEL_API_KEY and META_MODEL, then restart the API.")
+
+        async def scoped_search(query: str):
+            return await run_in_threadpool(search_household_memory, store, actor["household_id"], query)
+
+        try:
+            provider = memory_reply if settings.assistant_provider == "muse" else answer_question
+            return await provider(settings, body, scoped_search)
+        except AssistantError as error:
+            raise HTTPException(error.status_code, str(error)) from error
+
+    @app.post("/api/voice/transcribe", response_model=TranscriptResponse)
+    async def speech(audio: UploadFile = File(...), actor=Depends(member)):
+        if settings.assistant_provider != "muse":
+            raise HTTPException(409, "Enable the Muse assistant to use Muse Voice Transcribe.")
+        try:
+            return await transcribe(settings, audio)
+        except AssistantError as error:
+            raise HTTPException(error.status_code, str(error)) from error
 
     return app
 

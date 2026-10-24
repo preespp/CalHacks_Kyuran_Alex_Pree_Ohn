@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
   ArrowDownLeft,
-  ArrowRight,
   ArrowUpRight,
   Check,
-  ChevronDown,
   Clock3,
   DoorOpen,
-  History,
   House,
-  Info,
+  History,
   Leaf,
   LoaderCircle,
   MapPin,
@@ -23,6 +20,8 @@ import { api, ApiError, timeAgo } from './api';
 import CapturePanel from './components/CapturePanel';
 import EvidenceImage from './components/EvidenceImage';
 import Modal from './components/Modal';
+import AssistantPanel from './components/AssistantPanel';
+import HouseholdLayout, { type HouseholdTab } from './components/HouseholdLayout';
 import type { Health, MemoryObject, Observation, Profile, Session } from './types';
 
 function loadSession(): Session | null {
@@ -50,7 +49,10 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
   const [room, setRoom] = useState('');
-  const [tab, setTab] = useState<'memory' | 'activity'>('memory');
+  const [tab, setTab] = useState<HouseholdTab>(() => {
+    const view = new URLSearchParams(window.location.search).get('view');
+    return view === 'assistant' || view === 'activity' ? view : 'memory';
+  });
   const [selected, setSelected] = useState<MemoryObject | null>(null);
   const [modal, setModal] = useState<'capture' | 'household' | 'about' | null>(null);
   const [error, setError] = useState('');
@@ -84,7 +86,11 @@ export default function App() {
       })
       .catch((error) => {
         if (!cancelled) {
-          setError(error.message);
+          setError(
+            error instanceof ApiError && error.status === 404
+              ? 'The household API is unavailable on this server. Muse chat can run independently.'
+              : error.message,
+          );
           setLoading(false);
         }
       });
@@ -122,7 +128,13 @@ export default function App() {
         }
       } catch (error) {
         if (!cancelled) {
-          setError(error instanceof Error ? error.message : 'Could not load household memory.');
+          setError(
+            error instanceof ApiError && error.status === 404
+              ? 'The household API is unavailable on this server. Muse chat can run independently.'
+              : error instanceof Error
+                ? error.message
+                : 'Could not load household memory.',
+          );
           setLoading(false);
           if (error instanceof ApiError && error.status === 401) {
             sessionStorage.removeItem('commonplace-session');
@@ -169,318 +181,245 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <a className="brand" href="/" aria-label="Commonplace home">
-          <span className="brand-icon">
-            <House size={23} strokeWidth={1.7} />
-          </span>
-          <span>
-            commonplace<span className="brand-dot">.</span>
-          </span>
-        </a>
-        <div className="sidebar-context">A LITTLE SHARED MEMORY</div>
-        <button className="home-switch" onClick={() => setModal('household')}>
-          <span className="home-avatar">
-            <Leaf size={21} />
-          </span>
-          <span>
-            <strong>Our little home</strong>
-            <small>3 people, one shared space</small>
-          </span>
-          <ChevronDown size={16} />
-        </button>
-        <nav aria-label="Main navigation">
-          <button
-            className={tab === 'memory' ? 'nav-item active' : 'nav-item'}
-            onClick={() => setTab('memory')}
-          >
-            <House size={19} />
-            Our memory
-            <ArrowRight size={15} className="nav-arrow" />
-          </button>
-          <button
-            className={tab === 'activity' ? 'nav-item active' : 'nav-item'}
-            onClick={() => setTab('activity')}
-          >
-            <History size={19} />
-            Recent activity
-          </button>
-          <button className="nav-item" onClick={() => setModal('household')}>
-            <Users size={19} />
-            Household
-          </button>
-        </nav>
-        <div className="sidebar-note">
-          <span className="note-spark">
-            <Sparkles size={20} />
-          </span>
-          <p>
-            Someone remembers.
-            <br />
-            <strong>Now everyone can.</strong>
-          </p>
-          <span>
-            A place for the little things
-            <br />
-            you share along the way.
-          </span>
-        </div>
-        <div className="sidebar-bottom">
-          <button className="nav-item" onClick={() => setModal('about')}>
-            <Info size={18} />
-            How it works
-          </button>
-          <div className="profile">
-            <span className="avatar avatar-pree">{session?.member.name[0] ?? 'P'}</span>
-            <span>
-              <strong>{session?.member.name ?? 'Connecting…'}</strong>
-              <small>Demo household member</small>
-            </span>
-          </div>
-        </div>
-      </aside>
-
-      <div className="main-shell">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <House size={16} />
-            <span>Our little home</span>
-            <span className="breadcrumb-divider">/</span>
-            <strong>{tab === 'memory' ? 'Our memory' : 'Recent activity'}</strong>
-          </div>
-          <button
-            className="people-button"
-            onClick={() => setModal('household')}
-            aria-label="View three household members"
-          >
-            <span className="avatar avatar-alex">A</span>
-            <span className="avatar avatar-pree">P</span>
-            <span className="avatar avatar-kyuran">K</span>
-            <span className="people-label">Better together</span>
-          </button>
-        </header>
-        <main>
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">
-                <span />
-                LESS SEARCHING, MORE LIVING
-              </div>
-              <h1>{tab === 'memory' ? 'A home that remembers.' : 'Little updates. Shared.'}</h1>
-              <p>
-                {tab === 'memory'
-                  ? 'For the “where did we put that?” moments.'
+    <>
+      <HouseholdLayout
+        tab={tab}
+        onTab={setTab}
+        onHousehold={() => setModal('household')}
+        onAbout={() => setModal('about')}
+        memberName={session?.member.name}
+      >
+        <div className="page-heading">
+          <div>
+            <div className="eyebrow">
+              <span />
+              LESS SEARCHING, MORE LIVING
+            </div>
+            <h1>
+              {tab === 'memory'
+                ? 'A home that remembers.'
+                : tab === 'assistant'
+                  ? 'Just ask your household.'
+                  : 'Little updates. Shared.'}
+            </h1>
+            <p>
+              {tab === 'memory'
+                ? 'For the “where did we put that?” moments.'
+                : tab === 'assistant'
+                  ? 'Find the little things, with Muse and shared evidence.'
                   : 'The things your household has remembered along the way.'}
-              </p>
-            </div>
-            <button
-              className="primary-button"
-              onClick={() => setModal('capture')}
-              disabled={!session}
-            >
-              <Plus size={18} />
-              Remember something
-            </button>
+            </p>
           </div>
+          <button
+            className="primary-button"
+            onClick={() => setModal('capture')}
+            disabled={!session}
+          >
+            <Plus size={18} />
+            Remember something
+          </button>
+        </div>
 
-          {error && (
-            <div className="error-banner" role="alert">
-              <span>{error}</span>
-              <button onClick={() => setRevision((value) => value + 1)}>Retry</button>
-            </div>
-          )}
+        {error && (
+          <div className="error-banner" role="alert">
+            <span>{error}</span>
+            <button onClick={() => setRevision((value) => value + 1)}>Retry</button>
+            <a href="/muse">Open Muse chat</a>
+          </div>
+        )}
 
-          {tab === 'memory' ? (
-            <>
-              <section className="search-card" aria-label="Search household memory">
-                <div className="search-card-copy">
-                  <span className="mini-label">
-                    <Sparkles size={15} />
-                    YOUR HOUSEHOLD'S COLLECTIVE MEMORY
-                  </span>
-                  <h2>What are you looking for?</h2>
-                  <p>If one of us has seen it, we can help you find it.</p>
+        {tab === 'memory' ? (
+          <>
+            <section className="search-card" aria-label="Search household memory">
+              <div className="search-card-copy">
+                <span className="mini-label">
+                  <Sparkles size={15} />
+                  YOUR HOUSEHOLD'S COLLECTIVE MEMORY
+                </span>
+                <h2>What are you looking for?</h2>
+                <p>If one of us has seen it, we can help you find it.</p>
+              </div>
+              <div className="search-input-wrap">
+                <Search size={22} />
+                <input
+                  aria-label="Search objects"
+                  placeholder="Try “HDMI adapter” or “blue water bottle”"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+                {query && (
+                  <button
+                    className="icon-button"
+                    onClick={() => setQuery('')}
+                    aria-label="Clear search"
+                  >
+                    <X size={17} />
+                  </button>
+                )}
+                <span className="search-enter">
+                  <ArrowDownLeft size={17} />
+                </span>
+              </div>
+              <div className="search-suggestions">
+                <span>A little inspiration</span>
+                {['House keys', 'HDMI adapter', 'Blue water bottle'].map((label) => (
+                  <button key={label} onClick={() => setQuery(label)}>
+                    {label}
+                    <ArrowUpRight size={12} />
+                  </button>
+                ))}
+              </div>
+              <div className="search-decoration" aria-hidden="true">
+                <div className="decor-ring" />
+                <Leaf size={72} strokeWidth={0.8} />
+                <span>home, held together</span>
+              </div>
+            </section>
+
+            <section className="memory-section" aria-labelledby="memory-title">
+              <div className="section-heading">
+                <div>
+                  <h2 id="memory-title">
+                    {search ? 'What we remember' : 'Around our home'}
+                    <span className="count-badge">{items.length}</span>
+                  </h2>
+                  <p>Little things, with a place in our shared memory.</p>
                 </div>
-                <div className="search-input-wrap">
-                  <Search size={22} />
-                  <input
-                    aria-label="Search objects"
-                    placeholder="Try “HDMI adapter” or “blue water bottle”"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                  />
-                  {query && (
-                    <button
-                      className="icon-button"
-                      onClick={() => setQuery('')}
-                      aria-label="Clear search"
-                    >
-                      <X size={17} />
-                    </button>
-                  )}
-                  <span className="search-enter">
-                    <ArrowDownLeft size={17} />
-                  </span>
+                <label className="room-filter">
+                  <DoorOpen size={16} />
+                  <select
+                    aria-label="Filter by room"
+                    value={room}
+                    onChange={(event) => setRoom(event.target.value)}
+                  >
+                    <option value="">All rooms</option>
+                    {['Living room', 'Kitchen', 'Bedroom', 'Office', 'Entryway'].map((value) => (
+                      <option key={value}>{value}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {loading ? (
+                <div className="empty-state">
+                  <LoaderCircle size={26} className="spin" />
+                  <p>Opening our memory…</p>
                 </div>
-                <div className="search-suggestions">
-                  <span>A little inspiration</span>
-                  {['House keys', 'HDMI adapter', 'Blue water bottle'].map((label) => (
-                    <button key={label} onClick={() => setQuery(label)}>
-                      {label}
-                      <ArrowUpRight size={12} />
+              ) : items.length ? (
+                <div className="object-grid">
+                  {items.map((item) => (
+                    <button className="object-card" key={item.id} onClick={() => setSelected(item)}>
+                      <div className="card-image">
+                        <EvidenceImage
+                          observation={item.last_visual}
+                          token={session!.token}
+                          highlight
+                        />
+                        <span
+                          className={`source-pill ${item.latest.source === 'reported' ? 'reported' : ''}`}
+                        >
+                          {sourceName(item.latest.source)}
+                        </span>
+                        <span className="card-open">
+                          <ArrowUpRight size={19} />
+                        </span>
+                      </div>
+                      <div className="card-body">
+                        <div className="card-title">
+                          <h3>{item.label}</h3>
+                          <span className="small-dot" />
+                        </div>
+                        <p className="card-location">
+                          <MapPin size={14} />
+                          {item.latest.room}
+                        </p>
+                        <p className="object-location">{item.latest.location}</p>
+                        <div className="card-footer">
+                          <span className={`avatar avatar-${item.latest.actor_name.toLowerCase()}`}>
+                            {item.latest.actor_name[0]}
+                          </span>
+                          <span>
+                            {item.latest.actor_name}{' '}
+                            {item.latest.source === 'reported' ? 'reported' : 'remembered'}
+                          </span>
+                          <span className="card-time">
+                            <Clock3 size={11} />
+                            {timeAgo(item.latest.observed_at)}
+                          </span>
+                        </div>
+                      </div>
                     </button>
                   ))}
                 </div>
-                <div className="search-decoration" aria-hidden="true">
-                  <div className="decor-ring" />
-                  <Leaf size={72} strokeWidth={0.8} />
-                  <span>home, held together</span>
+              ) : (
+                <div className="empty-state">
+                  <Search size={29} />
+                  <h3>No stored match yet.</h3>
+                  <p>Try a different name or scan the surface where you last saw it.</p>
+                  <button
+                    className="secondary-button"
+                    onClick={() => {
+                      setQuery('');
+                      setRoom('');
+                    }}
+                  >
+                    Show all memories
+                  </button>
                 </div>
-              </section>
-
-              <section className="memory-section" aria-labelledby="memory-title">
-                <div className="section-heading">
-                  <div>
-                    <h2 id="memory-title">
-                      {search ? 'What we remember' : 'Around our home'}
-                      <span className="count-badge">{items.length}</span>
-                    </h2>
-                    <p>Little things, with a place in our shared memory.</p>
-                  </div>
-                  <label className="room-filter">
-                    <DoorOpen size={16} />
-                    <select
-                      aria-label="Filter by room"
-                      value={room}
-                      onChange={(event) => setRoom(event.target.value)}
-                    >
-                      <option value="">All rooms</option>
-                      {['Living room', 'Kitchen', 'Bedroom', 'Office', 'Entryway'].map((value) => (
-                        <option key={value}>{value}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                {loading ? (
-                  <div className="empty-state">
-                    <LoaderCircle size={26} className="spin" />
-                    <p>Opening our memory…</p>
-                  </div>
-                ) : items.length ? (
-                  <div className="object-grid">
-                    {items.map((item) => (
-                      <button
-                        className="object-card"
-                        key={item.id}
-                        onClick={() => setSelected(item)}
-                      >
-                        <div className="card-image">
-                          <EvidenceImage
-                            observation={item.last_visual}
-                            token={session!.token}
-                            highlight
-                          />
-                          <span
-                            className={`source-pill ${item.latest.source === 'reported' ? 'reported' : ''}`}
-                          >
-                            {sourceName(item.latest.source)}
-                          </span>
-                          <span className="card-open">
-                            <ArrowUpRight size={19} />
-                          </span>
-                        </div>
-                        <div className="card-body">
-                          <div className="card-title">
-                            <h3>{item.label}</h3>
-                            <span className="small-dot" />
-                          </div>
-                          <p className="card-location">
-                            <MapPin size={14} />
-                            {item.latest.room}
-                          </p>
-                          <p className="object-location">{item.latest.location}</p>
-                          <div className="card-footer">
-                            <span
-                              className={`avatar avatar-${item.latest.actor_name.toLowerCase()}`}
-                            >
-                              {item.latest.actor_name[0]}
-                            </span>
-                            <span>
-                              {item.latest.actor_name}{' '}
-                              {item.latest.source === 'reported' ? 'reported' : 'remembered'}
-                            </span>
-                            <span className="card-time">
-                              <Clock3 size={11} />
-                              {timeAgo(item.latest.observed_at)}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    <Search size={29} />
-                    <h3>No stored match yet.</h3>
-                    <p>Try a different name or scan the surface where you last saw it.</p>
-                    <button
-                      className="secondary-button"
-                      onClick={() => {
-                        setQuery('');
-                        setRoom('');
-                      }}
-                    >
-                      Show all memories
-                    </button>
-                  </div>
-                )}
-              </section>
-              <div className="bottom-note">
-                <span>
-                  <Users size={18} />A little less “have you seen my…?”
-                </span>
-                <span>Shared with care. Remembered together.</span>
-              </div>
-            </>
-          ) : (
-            <section className="activity-section">
-              <div className="section-heading">
-                <div>
-                  <h2>Our household timeline</h2>
-                  <p>Photo observations and member reports, kept as separate evidence.</p>
-                </div>
-              </div>
-              <Activity
-                events={events}
-                onSelect={(id) => {
-                  const found = items.find((item) => item.id === id);
-                  if (found) setSelected(found);
-                  else {
-                    setQuery('');
-                    setRoom('');
-                    setTab('memory');
-                  }
-                }}
-              />
+              )}
             </section>
-          )}
+            <div className="bottom-note">
+              <span>
+                <Users size={18} />A little less “have you seen my…?”
+              </span>
+              <span>Shared with care. Remembered together.</span>
+            </div>
+          </>
+        ) : tab === 'assistant' ? (
+          session && (
+            <AssistantPanel
+              key={session.token}
+              token={session.token}
+              health={health}
+              onSelect={setSelected}
+            />
+          )
+        ) : (
+          <section className="activity-section">
+            <div className="section-heading">
+              <div>
+                <h2>Our household timeline</h2>
+                <p>Photo observations and member reports, kept as separate evidence.</p>
+              </div>
+            </div>
+            <Activity
+              events={events}
+              onSelect={(id) => {
+                const found = items.find((item) => item.id === id);
+                if (found) setSelected(found);
+                else {
+                  setQuery('');
+                  setRoom('');
+                  setTab('memory');
+                }
+              }}
+            />
+          </section>
+        )}
 
-          <footer className="app-footer">
-            <span className="footer-brand">
-              <House size={14} />
-              commonplace.
-            </span>
-            <span>
-              {health?.vision_provider === 'gemini' ? 'Gemini photo analysis' : 'Sample data'} ·
-              Shared updates every 5 seconds
-            </span>
-            <button onClick={() => setModal('about')}>
-              Hackathon starter <ArrowUpRight size={12} />
-            </button>
-          </footer>
-        </main>
-      </div>
+        <footer className="app-footer">
+          <span className="footer-brand">
+            <House size={14} />
+            commonplace.
+          </span>
+          <span>
+            {health?.vision_provider === 'gemini' ? 'Gemini photo analysis' : 'Sample data'} ·
+            Shared updates every 5 seconds
+          </span>
+          <button onClick={() => setModal('about')}>
+            Hackathon starter <ArrowUpRight size={12} />
+          </button>
+        </footer>
+      </HouseholdLayout>
 
       {toast && (
         <div className="toast" role="status">
@@ -588,7 +527,7 @@ export default function App() {
           />
         </Modal>
       )}
-    </div>
+    </>
   );
 }
 

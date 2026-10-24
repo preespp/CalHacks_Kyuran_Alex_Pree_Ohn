@@ -4,23 +4,25 @@ A shared visual memory for the “where did we put that?” moments.
 
 One person remembers an object. Everyone in the household can find its last-seen evidence, see who contributed it, and report when it moves.
 
-**This repository is a runnable local hackathon starter.** It includes a React app, a FastAPI backend with persistent SQLite memory, a real Gemini image-analysis adapter, optional private Azure image storage, a read-only connector endpoint, and a separate SpacetimeDB module. It has not been deployed or connected to a Muse account.
+**This repository is a runnable local hackathon starter.** It includes a React app, a FastAPI backend with persistent SQLite memory, a Meta Muse text/voice assistant and Gemini image-analysis adapter, optional private Azure image storage, a read-only connector endpoint, and a separate SpacetimeDB module. Muse Spark via Meta Model API is the user-facing assistant; Gemini remains responsible for computer vision. No consumer Muse connector is needed. Live account and device verification remain setup steps.
 
 ## What works now
 
-| Capability                                                                      | Status                                                |
-| ------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Search objects, filter rooms, inspect a saved scene and bounding box            | Working locally                                       |
-| Shared location reports, found events, observation history                      | Working locally                                       |
-| Switch between Alex, Pree, and Kyuran in the sample household                   | Working development identities                        |
-| Persist memory and sessions across API restarts                                 | SQLite in `.data/`                                    |
-| Update a second browser session                                                 | Five-second polling of the same API                   |
-| Camera preview and JPEG/PNG/WebP uploads                                        | Camera needs localhost or HTTPS                       |
-| Analyze a real image with Gemini                                                | Implemented; requires your API key and model access   |
-| Store real photographs in private Azure Blob Storage                            | Implemented adapter; requires Azure setup             |
-| Read-only household search for a Muse connector                                 | Implemented HTTP endpoint; Muse connection unverified |
-| SpacetimeDB private tables, reducers, invitations, scoped views                 | Separate module; not wired into the local app         |
-| Production sign-in, background workers, automatic object reidentification, SLAM | Next milestones                                       |
+| Capability                                                                      | Status                                              |
+| ------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Search objects, filter rooms, inspect a saved scene and bounding box            | Working locally                                     |
+| Shared location reports, found events, observation history                      | Working locally                                     |
+| Switch between Alex, Pree, and Kyuran in the sample household                   | Working development identities                      |
+| Persist memory and sessions across API restarts                                 | SQLite in `.data/`                                  |
+| Update a second browser session                                                 | Five-second polling of the same API                 |
+| Camera preview and JPEG/PNG/WebP uploads                                        | Camera needs localhost or HTTPS                     |
+| Analyze a real image with Gemini                                                | Implemented; requires your API key and model access |
+| Store real photographs in private Azure Blob Storage                            | Implemented adapter; requires Azure setup           |
+| In-app Muse assistant with fresh household memory and clickable evidence        | Implemented; requires Meta API key and model access |
+| Microphone input, browser spoken replies, typed chat                            | Implemented; verify microphone/audio on your device |
+| Read-only household search for optional external integrations                   | Existing HTTP endpoint retained                     |
+| SpacetimeDB private tables, reducers, invitations, scoped views                 | Separate module; not wired into the local app       |
+| Production sign-in, background workers, automatic object reidentification, SLAM | Next milestones                                     |
 
 Sample illustrations are explicitly labeled. Sample mode never returns canned detections for your uploaded photograph. A person's location report does not turn an older photograph into evidence of the new location.
 
@@ -80,6 +82,9 @@ services/api/
   commonplace_api/main.py        HTTP endpoints and session authorization
   commonplace_api/store.py       SQLite reference implementation
   commonplace_api/vision.py      Gemini adapter and image normalization
+  commonplace_api/muse.py        Muse plain chat and shared-memory tool loop
+  commonplace_api/voice.py       Muse Voice Transcribe and audio validation
+  commonplace_api/assistant_lab.py Independent backend without database or vision
   commonplace_api/storage.py     Local and private Azure image stores
   tests/                          API, permissions, evidence, provider tests
 services/worker/                  Documented next-stage worker contract
@@ -100,7 +105,7 @@ Create a project and API key in [Google AI Studio](https://aistudio.google.com/)
 
 ```dotenv
 VISION_PROVIDER=gemini
-GEMINI_API_KEY=your-private-api-key
+GEMINI_VISION_API_KEY=your-vision-teammates-private-api-key
 GEMINI_MODEL=your-accessible-image-capable-model-id
 ```
 
@@ -110,11 +115,48 @@ The capture endpoint normalizes EXIF orientation, removes metadata, resizes the 
 
 Analysis currently runs inside the capture request with a bounded provider timeout. There is no background queue yet. Start with one deliberate capture at a time. For the asynchronous design, see [the worker contract](services/worker/README.md).
 
-## Connect Azure, SpacetimeDB, and Muse
+## Test your Muse assistant independently
+
+Put your Meta Model API key and an enabled model ID in the root `.env`:
+
+```dotenv
+MODEL_API_KEY=your-private-meta-api-key
+META_MODEL=muse-spark-1.3
+META_VOICE_MODEL=muse-voice-transcribe-1.0
+```
+
+`muse-spark-1.3` is a documented example; choose a model actually enabled for your Meta project and credit. Never put this key in the frontend. Confirm your $50 offer's eligible products and expiry in the Meta dashboard; the repository cannot verify your balance.
+
+Start these in two terminals:
+
+```bash
+make muse-api
+```
+
+```bash
+make muse-web
+```
+
+Open **http://localhost:5173/muse**. This playground uses a separate local backend on **8002**. It does not initialize SQLite, log in a demo household, access photographs, or call Gemini, Azure, or SpacetimeDB. It works regardless of `ASSISTANT_PROVIDER` and ignores incomplete vision/storage setup. The homepage `/` always remains the household app; no launch command redirects it. The **Muse chat** menu link opens the temporary `/muse` test page, which reuses the household assistant layout without making household/database requests. Start `make api` as well to use household features; it initializes the current local SQLite store automatically. Restart an older Vite process to pick up the separate API proxies.
+
+Type a message and press **Send**, or tap **Talk to Muse** once for automatic conversation. Speak and pause: the app detects the end of speech, transcribes and sends it, speaks the answer, and listens again. The microphone is off while processing/playing a reply. **Stop voice session** returns to typing; eight seconds without speech ends listening. **Dictate a message** retains manual review-before-send. Spoken output uses your browser/device voice; blocked playback pauses the voice session and leaves **Read reply** available. Optional **Enable Hello** adds foreground phrase recognition in supported browsers: say “Hello”, wait for “I’m listening”, then ask. It returns to wake standby after one spoken reply. Browser recognition may send listening audio to the browser vendor; it is not an offline wake-word engine. Escape or Disable Hello turns it off, and hiding the page disables it. It cannot listen with the browser closed or interrupt spoken playback. See [accessible voice testing](docs/ACCESSIBILITY.md).
+
+Audio is converted in-browser to mono 24 kHz 16-bit WAV and sent through the backend to **Muse Voice Transcribe**. Clips are capped at 30 seconds and 2 MiB; the microphone stops automatically, and audio is not persisted by our backend. Messages and recordings consume Meta API usage. This is a local development playground with no user sign-in; do not deploy or tunnel it publicly.
+
+Follow [Muse installation and testing](docs/MUSE_TESTING.md) for prerequisites, UI checks, common errors, voice limitations, and the later shared-memory test. No paid requests are sent automatically by the repository's tests.
+
+### Connect Muse to shared household memory later
+
+Set `ASSISTANT_PROVIDER=muse` with the same Meta credentials, then use the normal `make api` + `make web` flow at `/`. The full local app uses its existing SQLite store and demo identities. Muse requests a read-only `search_household_memory` tool; FastAPI authorizes the household, reads fresh records, and returns evidence. Unknown/ambiguous matches get deterministic no-match/clarification responses. Existing member-report, found-event, image, and history features remain in place.
+
+The isolated `/muse` page has no household lookup. It cannot find real household items, and its temporary conversation is not durable shared memory. In the full app, location updates still use the object controls, and earlier chat answers remain snapshots. The Gemini assistant adapter remains available for optional compatibility testing via `ASSISTANT_PROVIDER=gemini`; it is not used in the Muse flow.
+
+## Connect Azure and SpacetimeDB
 
 - **Azure:** follow [account and storage setup](docs/SETUP.md). Install the API's `azure` extra, authenticate with `az login`, create a private container, and configure `STORAGE_PROVIDER=azure`. The adapter uses `DefaultAzureCredential`; no storage key belongs in the browser.
 - **SpacetimeDB:** follow [the module instructions](spacetimedb/README.md). It is a separate implementation milestone. Setting `SPACETIMEDB_URL` does not migrate SQLite or enable subscriptions in this frontend.
-- **Muse:** `GET /api/connector/search?q=adapter` is a read-only search operation using a scoped bearer session. See [connector setup and limits](docs/SETUP.md#muse-connector). A public HTTPS endpoint and account-specific connector setup are still required.
+
+The existing `GET /api/connector/search?q=adapter` operation and optional `make connector` gateway remain available for external experiments. These external connector experiments are separate from the active Meta Model API integration; no consumer Muse connector registration is required.
 
 The intended cloud architecture is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Follow the [Azure deployment and GoDaddy domain guide](docs/DEPLOYMENT.md) after completing its production-readiness milestones. This local starter does not claim sponsor qualification or production readiness.
 
@@ -122,16 +164,21 @@ The intended cloud architecture is described in [docs/ARCHITECTURE.md](docs/ARCH
 
 Copy `.env.example` to `.env`. Defaults work without credentials.
 
-| Setting                                                | Purpose                                                             |
-| ------------------------------------------------------ | ------------------------------------------------------------------- |
-| `APP_ENV`                                              | Must be `development` while demo profile selection is enabled       |
-| `DATA_DIR`                                             | Local database and image directory; relative to the repository root |
-| `VISION_PROVIDER`                                      | `demo` or `gemini`                                                  |
-| `GEMINI_API_KEY`, `GEMINI_MODEL`                       | Backend-only Gemini configuration                                   |
-| `STORAGE_PROVIDER`                                     | `local` or `azure`; applies to newly saved real images              |
-| `AZURE_STORAGE_ACCOUNT_URL`, `AZURE_STORAGE_CONTAINER` | Private Azure image store                                           |
-| `CORS_ORIGINS`                                         | Explicit comma-separated origins for direct API callers             |
-| `MAX_UPLOAD_BYTES`                                     | Per-image limit, default 8 MiB                                      |
+| Setting                                                | Purpose                                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `APP_ENV`                                              | Must be `development` while demo profile selection is enabled             |
+| `DATA_DIR`                                             | Local database and image directory; relative to the repository root       |
+| `VISION_PROVIDER`                                      | `demo` or `gemini`                                                        |
+| `ASSISTANT_PROVIDER`                                   | `disabled` (default), `muse`, or optional `gemini`; independent of vision |
+| `MODEL_API_KEY`, `META_MODEL`, `META_VOICE_MODEL`      | Backend-only Muse chat and transcription settings                         |
+| `GEMINI_CHAT_API_KEY`                                  | Optional previous Gemini assistant key                                    |
+| `GEMINI_VISION_API_KEY`, `GEMINI_MODEL`                | Backend-only photo-analysis credentials/model                             |
+| `GEMINI_API_KEY`                                       | Optional legacy shared-key fallback; role-specific keys take precedence   |
+| `GEMINI_CHAT_MODEL`                                    | Function-calling model for chat; falls back to `GEMINI_MODEL`             |
+| `STORAGE_PROVIDER`                                     | `local` or `azure`; applies to newly saved real images                    |
+| `AZURE_STORAGE_ACCOUNT_URL`, `AZURE_STORAGE_CONTAINER` | Private Azure image store                                                 |
+| `CORS_ORIGINS`                                         | Explicit comma-separated origins for direct API callers                   |
+| `MAX_UPLOAD_BYTES`                                     | Per-image limit, default 8 MiB                                            |
 
 Use a new `DATA_DIR` for a fresh rehearsal without deleting existing memory. Switching image storage does not migrate previously saved photographs; keep a consistent provider for a dataset.
 
@@ -160,7 +207,7 @@ To use an existing Chrome installation instead of downloading Chromium:
 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm run test:browser
 ```
 
-Browser tests launch isolated API/frontend servers on ports 8011/5174 and use a separate directory under `.data/browser-tests/`. They cover search, a report shared between two browser sessions, truthful empty states, mobile overflow, and sample capture. They do not establish actual iPhone camera behavior or live Gemini/Azure/Muse account connectivity.
+Browser tests launch household/Muse APIs on ports 8011/8012 and frontends on 5174/5175 (including a regression check with the obsolete redirect flag) and use a separate directory under `.data/browser-tests/`. They cover search, a report shared between two browser sessions, truthful empty states, mobile overflow, sample capture, and assistant UI/error behavior. Meta/Gemini transports and audio responses are mocked in automated tests; these do not establish actual iPhone microphone/camera behavior, speech quality, or live account connectivity.
 
 ## Next implementation milestones
 
@@ -168,7 +215,7 @@ Browser tests launch isolated API/frontend servers on ports 8011/5174 and use a 
 2. Connect the app and vision service to SpacetimeDB; generate client bindings and replace polling with scoped subscriptions. SQLite is a development reference, not a required second cloud database.
 3. Extract capture processing into durable jobs with retries, leasing, and idempotent result commits.
 4. Add explicit object identity confirmation across captures.
-5. Complete the authenticated Muse connection and deploy the API/frontend to Azure.
+5. Verify Muse chat/voice and Gemini image analysis with their respective project credentials, then deploy the API/frontend to Azure.
 6. Rehearse with real household objects on two phones; add a domain after deployment works.
 
 Full SLAM, metric 3D navigation, continuous background video capture, and physical direction arrows are outside this starter's scope.

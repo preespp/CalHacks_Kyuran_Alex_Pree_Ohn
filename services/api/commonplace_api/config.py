@@ -16,6 +16,13 @@ class Settings:
     storage_provider: str = "local"
     gemini_api_key: str = ""
     gemini_model: str = ""
+    assistant_provider: str = "disabled"
+    gemini_chat_model: str = ""
+    gemini_chat_api_key: str = ""
+    gemini_vision_api_key: str = ""
+    meta_api_key: str = ""
+    meta_model: str = ""
+    meta_voice_model: str = "muse-voice-transcribe-1.0"
     azure_account_url: str = ""
     azure_container: str = "scene-images"
     max_upload_bytes: int = 8 * 1024 * 1024
@@ -31,6 +38,13 @@ class Settings:
             storage_provider=os.getenv("STORAGE_PROVIDER", "local"),
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
             gemini_model=os.getenv("GEMINI_MODEL", ""),
+            assistant_provider=os.getenv("ASSISTANT_PROVIDER", "disabled"),
+            gemini_chat_model=os.getenv("GEMINI_CHAT_MODEL", ""),
+            gemini_chat_api_key=os.getenv("GEMINI_CHAT_API_KEY", ""),
+            gemini_vision_api_key=os.getenv("GEMINI_VISION_API_KEY", ""),
+            meta_api_key=os.getenv("MODEL_API_KEY", ""),
+            meta_model=os.getenv("META_MODEL", ""),
+            meta_voice_model=os.getenv("META_VOICE_MODEL", "muse-voice-transcribe-1.0"),
             azure_account_url=os.getenv("AZURE_STORAGE_ACCOUNT_URL", ""),
             azure_container=os.getenv("AZURE_STORAGE_CONTAINER", "scene-images"),
             max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024))),
@@ -40,18 +54,42 @@ class Settings:
             app_env=os.getenv("APP_ENV", "development"),
         )
 
+    @property
+    def chat_api_key(self) -> str:
+        return self.gemini_chat_api_key or self.gemini_api_key
+
+    @property
+    def vision_api_key(self) -> str:
+        return self.gemini_vision_api_key or self.gemini_api_key
+
     def validate(self) -> None:
         if self.app_env != "development":
             raise RuntimeError("This starter uses demo identity selection. Production auth must be implemented before deployment.")
         if self.vision_provider not in {"demo", "gemini"}:
             raise RuntimeError("VISION_PROVIDER must be demo or gemini")
-        if self.vision_provider == "gemini" and not (self.gemini_api_key and self.gemini_model):
-            raise RuntimeError("Gemini mode requires GEMINI_API_KEY and GEMINI_MODEL")
+        if self.vision_provider == "gemini" and not (self.vision_api_key and self.gemini_model):
+            raise RuntimeError("Gemini vision requires GEMINI_VISION_API_KEY (or legacy GEMINI_API_KEY) and GEMINI_MODEL")
+        if self.assistant_provider not in {"disabled", "gemini", "muse"}:
+            raise RuntimeError("ASSISTANT_PROVIDER must be disabled, muse, or gemini")
+        if self.assistant_provider == "muse":
+            self.validate_muse()
+        if self.assistant_provider == "gemini" and not (self.chat_api_key and (self.gemini_chat_model or self.gemini_model)):
+            raise RuntimeError("Gemini assistant requires GEMINI_CHAT_API_KEY (or legacy GEMINI_API_KEY) and GEMINI_CHAT_MODEL or GEMINI_MODEL")
         if self.gemini_model and not re.fullmatch(r"[A-Za-z0-9._-]+", self.gemini_model):
             raise RuntimeError("GEMINI_MODEL must be a model ID without a URL or models/ prefix")
+        if self.gemini_chat_model and not re.fullmatch(r"[A-Za-z0-9._-]+", self.gemini_chat_model):
+            raise RuntimeError("GEMINI_CHAT_MODEL must be a model ID without a URL or models/ prefix")
         if self.storage_provider not in {"local", "azure"}:
             raise RuntimeError("STORAGE_PROVIDER must be local or azure")
         if self.storage_provider == "azure" and not self.azure_account_url:
             raise RuntimeError("Azure storage requires AZURE_STORAGE_ACCOUNT_URL")
         if not 0 < self.max_upload_bytes <= 20 * 1024 * 1024:
             raise RuntimeError("MAX_UPLOAD_BYTES must be between 1 and 20971520")
+
+    def validate_muse(self) -> None:
+        if not self.meta_api_key or not self.meta_model:
+            raise RuntimeError("Muse requires MODEL_API_KEY and META_MODEL in the backend .env")
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", self.meta_model):
+            raise RuntimeError("META_MODEL must be a model ID without a URL")
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", self.meta_voice_model):
+            raise RuntimeError("META_VOICE_MODEL must be a model ID without a URL")

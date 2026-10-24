@@ -25,6 +25,53 @@ function setup() {
   return { db, alex, pree, worker, outsider, identity };
 }
 
+test('prototype guest registry permits only its household owner and preserves separate IDs', () => {
+  const { db, alex, pree, outsider } = setup();
+  const guestOwner = TestAuth.fromJwtPayload(
+    JSON.stringify({ sub: 'guest-service', iss: 'https://test.commonplace.local' }),
+    new ConnectionId(2n),
+  );
+  db.withReducerTx(guestOwner, (ctx) =>
+    reducers.createHousehold(ctx, {
+      id: 'demo-home',
+      name: 'Prototype',
+      displayName: 'Guest service',
+    }),
+  );
+  const first = { id: `guest-${'a'.repeat(32)}`, name: 'Pree' };
+  assert.throws(
+    () => db.withReducerTx(pree, (ctx) => reducers.createGuestProfile(ctx, first)),
+    /membership/i,
+  );
+  assert.throws(
+    () => db.withReducerTx(outsider, (ctx) => reducers.createGuestProfile(ctx, first)),
+    /demo-home/i,
+  );
+  assert.throws(
+    () => db.withReducerTx(alex, (ctx) => reducers.createGuestProfile(ctx, first)),
+    /demo-home/i,
+  );
+  db.withReducerTx(guestOwner, (ctx) => reducers.createGuestProfile(ctx, first));
+  db.withReducerTx(guestOwner, (ctx) =>
+    reducers.createGuestProfile(ctx, { id: `guest-${'b'.repeat(32)}`, name: 'Pree' }),
+  );
+  assert.equal(db.db.guestProfile.id.find(first.id).name, 'Pree');
+  assert.throws(
+    () =>
+      db.withReducerTx(guestOwner, (ctx) =>
+        reducers.createGuestProfile(ctx, { ...first, name: 'Someone else' }),
+      ),
+    /already exists/i,
+  );
+  assert.throws(
+    () =>
+      db.withReducerTx(guestOwner, (ctx) =>
+        reducers.createGuestProfile(ctx, { ...first, id: 'pree' }),
+      ),
+    /Invalid guest ID/,
+  );
+});
+
 test('invites are owner-issued, single use, and gate membership', () => {
   const { db, alex, pree, outsider } = setup();
   const code = 'unguessable-test-invite-code-1234567890';
@@ -52,7 +99,6 @@ test('only a granted worker can create visual evidence and foreign homes stay pr
     location: 'On desk',
     imageKey: 'scene.jpg',
     bbox: [0.1, 0.2, 0.4, 0.5],
-    actor: identity(alex),
     observedAt: db.clock.now(),
   };
   assert.throws(
@@ -62,6 +108,7 @@ test('only a granted worker can create visual evidence and foreign homes stay pr
   db.withReducerTx(alex, (ctx) => reducers.grantWorker(ctx, { identity: workerIdentity }));
   db.withReducerTx(worker, (ctx) => reducers.recordVisualObservation(ctx, args));
   assert.equal(reducers.householdObjects(db.viewContext(alex)).length, 1);
+  assert.equal(reducers.householdObservations(db.viewContext(alex))[0].actor, undefined);
   assert.equal(reducers.householdObservations(db.viewContext(outsider)).length, 0);
   assert.throws(
     () =>

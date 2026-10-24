@@ -33,10 +33,12 @@ test('root remains the household homepage even with the obsolete isolated launch
 });
 
 test('unavailable household API offers the working Muse chat route', async ({ page }) => {
-  await page.route('**/api/demo/session', (route) =>
+  await page.route('**/api/guest/session', (route) =>
     route.fulfill({ status: 404, json: { detail: 'Not Found' } }),
   );
   await page.goto('/');
+  await page.getByRole('textbox', { name: 'Your name' }).fill('Pree');
+  await page.getByRole('button', { name: 'Continue as guest', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('household API is unavailable');
   await page.getByRole('link', { name: 'Open Muse chat', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Just ask your household.' })).toBeVisible();

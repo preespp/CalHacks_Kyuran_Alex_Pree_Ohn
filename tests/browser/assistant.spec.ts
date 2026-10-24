@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { joinAsGuest } from './guest-helpers';
 
 test('disabled assistant is honest and preserves ordinary memory search', async ({ page }) => {
   await page.goto('/');
+  await joinAsGuest(page);
   await page.getByRole('button', { name: 'Ask Muse', exact: true }).click();
   await expect(page.getByText('Muse assistant is not enabled yet.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
@@ -53,6 +55,7 @@ test('assistant presents retrieved evidence, handles errors, and clears on profi
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
+  await joinAsGuest(page);
   await expect(page.locator('.object-card').first()).toBeVisible();
   await page.getByRole('button', { name: 'Ask Muse', exact: true }).click();
   const input = page.getByRole('textbox', { name: 'Ask about a shared object' });
@@ -60,7 +63,8 @@ test('assistant presents retrieved evidence, handles errors, and clears on profi
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   const transcript = page.getByRole('log', { name: 'Assistant conversation' });
   await expect(transcript).toContainText('The sample illustration shows the house keys');
-  await expect(transcript).toContainText('Kyuran');
+  await expect(transcript).not.toContainText('Kyuran');
+  await expect(transcript).toContainText('Sample illustration');
   expect(histories[0]).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: 'test-results/assistant-mobile.png', fullPage: true });
@@ -78,8 +82,9 @@ test('assistant presents retrieved evidence, handles errors, and clears on profi
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
 
   await page.getByRole('button', { name: 'Household', exact: true }).click();
-  await page.getByRole('button', { name: 'View as Alex', exact: true }).click();
-  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await page.getByRole('dialog').getByRole('textbox', { name: 'Your name' }).fill('Alex');
+  await page.getByRole('button', { name: 'Switch guest', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(transcript).not.toContainText('Where are our keys?');
   await expect(input).toHaveValue('');
 });

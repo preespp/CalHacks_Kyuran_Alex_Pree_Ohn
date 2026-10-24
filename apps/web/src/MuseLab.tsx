@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Camera } from 'lucide-react';
 import { api } from './api';
 import AssistantPanel from './components/AssistantPanel';
 import HouseholdLayout from './components/HouseholdLayout';
@@ -39,9 +39,13 @@ export default function MuseLab() {
           <h1>Just ask your household.</h1>
           <p>Find the little things, with Muse and shared evidence.</p>
         </div>
-        <button className="primary-button" disabled title="Saving requires the household app">
-          <Plus size={18} />
-          Remember something
+        <button
+          className="primary-button"
+          disabled
+          title="Scanning requires the household app and vision integration"
+        >
+          <Camera size={18} />
+          Scan room
         </button>
       </div>
       <div className="notice" role="note" aria-label="Temporary assistant test mode">

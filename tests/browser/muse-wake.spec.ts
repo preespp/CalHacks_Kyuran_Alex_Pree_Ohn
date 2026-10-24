@@ -18,7 +18,7 @@ async function enableWake(page: Page) {
   await expect.poll(() => page.evaluate(() => !!window.__voiceTest.wake)).toBe(true);
 }
 
-test('wake is opt-in, acknowledges before recording, and returns to standby after a reply', async ({
+test('manual wake activation acknowledges before recording and returns to standby after a reply', async ({
   page,
 }) => {
   let transcriptions = 0;
@@ -49,7 +49,7 @@ test('wake is opt-in, acknowledges before recording, and returns to standby afte
   await page.evaluate(() => window.__voiceTest.recognize('Hello!'));
   await expect
     .poll(() => page.evaluate(() => window.__voiceTest.spoken))
-    .toContain("I'm listening.");
+    .toContain('Hi I am Muse how can I help you today with household stuff');
   expect(await page.evaluate(() => window.__voiceTest.wake)).toBeNull();
   expect(await page.evaluate(() => window.__voiceTest.recordings)).toBe(0);
   await page.evaluate(() => window.__voiceTest.finishSpeech());

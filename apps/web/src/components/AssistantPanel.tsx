@@ -4,6 +4,9 @@ import { api } from '../api';
 import type { ChatMessage, ChatResponse, Health, MemoryObject, PlainChatResponse } from '../types';
 import { useSpeechOutput, useVoiceInput } from '../voice';
 import { useWakePhrase } from '../wake';
+import { mediaDefault, saveMediaPreference } from '../mediaPreferences';
+
+export const WAKE_GREETING = 'Hi I am Muse how can I help you today with household stuff';
 
 type Turn = ChatMessage & { evidence?: ChatResponse };
 
@@ -12,12 +15,17 @@ export default function AssistantPanel({
   health,
   onSelect,
   mode = 'memory',
+  compact = false,
+  onOpen,
 }: {
   token?: string;
   health: Pick<Health, 'assistant_provider'> | null;
   onSelect?: (item: MemoryObject) => void;
   mode?: 'memory' | 'plain';
+  compact?: boolean;
+  onOpen?: () => void;
 }) {
+  const autoAttempted = useRef(false);
   const [messages, setMessages] = useState<Turn[]>([]);
   const [question, setQuestion] = useState('');
   const [pending, setPending] = useState('');
@@ -95,7 +103,7 @@ export default function AssistantPanel({
     setConversation(true);
     setReadAloud(true);
     setAcknowledging(true);
-    const outcome = await speech.speak("I'm listening.");
+    const outcome = await speech.speak(WAKE_GREETING);
     if (generation.current !== turn || !conversationRef.current) return;
     if (outcome !== 'ended' || document.hidden) {
       stopConversation();
@@ -162,8 +170,43 @@ export default function AssistantPanel({
 
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
-    if (messages.length || pending || error) end.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [messages, pending, error]);
+    if (!compact && (messages.length || pending || error))
+      end.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [messages, pending, error, compact]);
+
+  const enableWakeRef = useRef(wake.enable);
+  enableWakeRef.current = wake.enable;
+  useEffect(() => {
+    if (
+      !enabled ||
+      name !== 'Muse' ||
+      !wake.supported ||
+      !voice.supported ||
+      !speech.supported ||
+      autoAttempted.current
+    )
+      return;
+    const timer = setTimeout(() => {
+      autoAttempted.current = true;
+      if (mediaDefault('voice')) {
+        setReadAloud(true);
+        enableWakeRef.current();
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [enabled, name, wake.supported, voice.supported, speech.supported]);
+
+  function toggleVoice() {
+    if (wake.enabled || conversation) {
+      saveMediaPreference('voice', false);
+      stopConversation();
+    } else {
+      saveMediaPreference('voice', true);
+      setReadAloud(true);
+      wake.enable();
+      void speech.speak('Wake listening enabled.');
+    }
+  }
 
   async function send(text = question, voiceTurn = false) {
     const message = text.trim();
@@ -227,9 +270,30 @@ export default function AssistantPanel({
 
   return (
     <section
-      className="assistant-panel"
+      className={`assistant-panel ${compact ? 'assistant-compact' : ''}`}
       aria-label={`${name} ${mode === 'plain' ? 'plain chat' : 'household assistant'}`}
     >
+      <div className="voice-power">
+        <span>
+          <Mic size={17} /> Muse voice {wake.enabled || conversation ? 'on' : 'off'}
+          {acknowledging ? ` · ${WAKE_GREETING}` : wake.listening ? ' · Say Hello' : ''}
+        </span>
+        <button
+          className="secondary-button"
+          aria-pressed={wake.enabled || conversation}
+          disabled={
+            !enabled || name !== 'Muse' || !wake.supported || !voice.supported || !speech.supported
+          }
+          onClick={toggleVoice}
+        >
+          {wake.enabled || conversation ? 'Turn off Muse voice' : 'Turn on Muse voice'}
+        </button>
+        {compact && onOpen && (
+          <button className="secondary-button" onClick={onOpen}>
+            Open chat
+          </button>
+        )}
+      </div>
       <div className="section-heading">
         <div>
           <h2>
@@ -256,7 +320,7 @@ export default function AssistantPanel({
       <p className="fine-print">
         {mode === 'plain'
           ? 'Isolated chat: no database, household memory, camera, or Gemini vision is connected.'
-          : "Answers use shared records and their timestamps. Ask here; report moves and finds from an object's card."}
+          : 'Answers use last-seen locations and timestamps. Start a room scan to update memory automatically.'}
       </p>
       {!enabled && (
         <div className="notice" role="status">
@@ -345,16 +409,16 @@ export default function AssistantPanel({
                     </span>
                     <small>
                       {item.latest.source === 'reported'
-                        ? 'Member reported'
+                        ? 'Location report'
                         : item.latest.source === 'sample'
                           ? 'Sample illustration'
                           : 'Camera observation'}{' '}
-                      · {item.latest.actor_name} ·{' '}
+                      ·{' '}
                       <time dateTime={item.latest.observed_at}>
                         {new Date(item.latest.observed_at).toLocaleString()}
                       </time>
                     </small>
-                    <small>Open evidence and update location</small>
+                    <small>Open saved evidence</small>
                   </button>
                 ))}
                 {message.evidence.total_matches > message.evidence.matches.length && (
@@ -490,8 +554,11 @@ export default function AssistantPanel({
               speech.speaking)
           }
           onClick={() => {
-            if (wake.enabled) stopConversation();
-            else {
+            if (wake.enabled) {
+              saveMediaPreference('voice', false);
+              stopConversation();
+            } else {
+              saveMediaPreference('voice', true);
               setReadAloud(true);
               wake.enable();
               void speech.speak('Wake listening enabled.');
@@ -503,7 +570,7 @@ export default function AssistantPanel({
         </button>
         <p id="wake-explanation" className="fine-print">
           {wake.supported
-            ? 'Optional: say “Hello”, wait for “I’m listening”, then ask. Keep this page visible. Your browser’s speech service may process wake-listening audio remotely.'
+            ? 'Optional: say “Hello”, wait for Muse’s greeting, then ask. Keep this page visible. Your browser’s speech service may process wake-listening audio remotely.'
             : 'Hello is unavailable in this browser. Use Talk to Muse, dictation, or typing.'}
         </p>
         <p className="fine-print" role="status" aria-live="polite">
@@ -613,7 +680,7 @@ export default function AssistantPanel({
       <p className="fine-print">
         {mode === 'plain'
           ? 'Messages are sent to Meta. This temporary conversation clears when you reload or leave this page.'
-          : `Questions and matching record text are sent to ${name}. Earlier answers are snapshots; ask again for a fresh search. This chat clears when you leave this tab or switch profiles.`}{' '}
+          : `Questions and matching record text are sent to ${name}. Earlier answers are snapshots; ask again for a fresh search. This chat persists across household screens and clears on reload or profile switch.`}{' '}
         Microphone audio is sent to Meta for transcription; spoken replies use your browser/device
         voice.
       </p>

@@ -3,6 +3,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   ChevronDown,
+  Camera,
   History,
   House,
   Info,
@@ -11,7 +12,7 @@ import {
   Users,
 } from 'lucide-react';
 
-export type HouseholdTab = 'memory' | 'activity' | 'assistant';
+export type HouseholdTab = 'memory' | 'activity' | 'assistant' | 'camera';
 
 export default function HouseholdLayout({
   children,
@@ -32,7 +33,10 @@ export default function HouseholdLayout({
 }) {
   function navigate(next: HouseholdTab) {
     if (onTab) onTab(next);
-    else window.location.assign(next === 'memory' ? '/' : `/?view=${next}`);
+    else
+      window.location.assign(
+        next === 'camera' ? '/camera' : next === 'memory' ? '/' : `/?view=${next}`,
+      );
   }
   return (
     <div className="app-shell">
@@ -40,7 +44,17 @@ export default function HouseholdLayout({
         Skip to main content
       </a>
       <aside className="sidebar">
-        <a className="brand" href="/" aria-label="Commonplace home">
+        <a
+          className="brand"
+          href="/"
+          aria-label="Commonplace home"
+          onClick={(event) => {
+            if (onTab) {
+              event.preventDefault();
+              onTab('memory');
+            }
+          }}
+        >
           <span className="brand-icon">
             <House size={23} strokeWidth={1.7} />
           </span>
@@ -55,7 +69,7 @@ export default function HouseholdLayout({
           </span>
           <span>
             <strong>Our little home</strong>
-            <small>{testMode ? 'Memory disconnected' : '3 people, one shared space'}</small>
+            <small>{testMode ? 'Memory disconnected' : 'Shared prototype household'}</small>
           </span>
           <ChevronDown size={16} />
         </button>
@@ -67,6 +81,13 @@ export default function HouseholdLayout({
             <House size={19} />
             Our memory
             <ArrowRight size={15} className="nav-arrow" />
+          </button>
+          <button
+            className={tab === 'camera' ? 'nav-item active' : 'nav-item'}
+            onClick={() => navigate('camera')}
+          >
+            <Camera size={19} />
+            Camera
           </button>
           <button
             className={tab === 'activity' ? 'nav-item active' : 'nav-item'}
@@ -118,8 +139,8 @@ export default function HouseholdLayout({
           <div className="profile">
             <span className="avatar avatar-pree">{memberName?.[0] ?? '–'}</span>
             <span>
-              <strong>{memberName ?? (testMode ? 'Test session' : 'Connecting…')}</strong>
-              <small>{testMode ? 'No household sign-in' : 'Demo household member'}</small>
+              <strong>{memberName ?? (testMode ? 'Test session' : 'Join as a guest')}</strong>
+              <small>{testMode ? 'No household sign-in' : 'Guest · no password'}</small>
             </span>
           </div>
         </div>
@@ -134,9 +155,11 @@ export default function HouseholdLayout({
             <strong>
               {tab === 'memory'
                 ? 'Our memory'
-                : tab === 'assistant'
-                  ? 'Ask Muse'
-                  : 'Recent activity'}
+                : tab === 'camera'
+                  ? 'Camera'
+                  : tab === 'assistant'
+                    ? 'Ask Muse'
+                    : 'Recent activity'}
             </strong>
           </div>
           <button
@@ -146,12 +169,10 @@ export default function HouseholdLayout({
             aria-label={
               testMode
                 ? 'Household members unavailable in test mode'
-                : 'View three household members'
+                : 'Open guest household settings'
             }
           >
-            <span className="avatar avatar-alex">A</span>
-            <span className="avatar avatar-pree">P</span>
-            <span className="avatar avatar-kyuran">K</span>
+            <span className="avatar avatar-pree">{memberName?.[0] ?? <Users size={16} />}</span>
             <span className="people-label">{testMode ? 'Test mode' : 'Better together'}</span>
           </button>
         </header>

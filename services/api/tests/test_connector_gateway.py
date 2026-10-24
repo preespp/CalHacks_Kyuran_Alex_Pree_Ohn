@@ -74,5 +74,5 @@ def test_gateway_reads_real_backend_state_after_another_members_update(tmp_path)
             assert update.status_code == 201
             latest = gateway.get("/api/connector/search?q=adapter", headers=headers).json()["matches"][0]["latest"]
             assert latest["source"] == "reported"
-            assert latest["actor_name"] == "Alex"
+            assert "actor_name" not in latest and "actor_id" not in latest
             assert latest["location"] == "In the green box"

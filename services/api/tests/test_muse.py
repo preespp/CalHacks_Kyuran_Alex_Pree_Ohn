@@ -133,10 +133,11 @@ def test_muse_memory_tool_sees_another_members_fresh_report(tmp_path, monkeypatc
         output = payload["input"][-1]
         assert output["call_id"] == "call_1"
         evidence = json.loads(output["output"])["matches"][0]
-        assert evidence["latest"]["actor_name"] == "Alex" and evidence["latest"]["source"] == "reported"
+        assert "actor_name" not in evidence["latest"] and "actor_id" not in evidence["latest"]
+        assert evidence["latest"]["source"] == "reported"
         assert evidence["latest"]["location"] == "In the green box"
         assert "image_url" not in evidence["latest"]
-        return httpx.Response(200, json=completed("Alex reported the adapter in the green box, Kitchen."))
+        return httpx.Response(200, json=completed("The latest location report places the adapter in the green box, Kitchen."))
     mock_meta(monkeypatch, respond)
     with TestClient(create_app(settings(tmp_path))) as client:
         assert client.post("/api/chat", json={"message": "adapter"}).status_code == 401

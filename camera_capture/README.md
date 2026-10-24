@@ -4,6 +4,14 @@ A small browser-based camera capture prototype. The phone displays a live camera
 
 This prototype does not save frames to disk or a database, and it does not perform mapping.
 
+## Integrated Commonplace app
+
+This prototype is now integrated into the main app's **Camera** menu (`http://localhost:5173/camera`) and **Scan room** dialog. The FastAPI backend imports this directory's original `TopFrameSelector`; the API wheel includes that reusable module. Front/back choice, JPEG compression, resolution, and top-three quality diagnostics are available in React.
+
+From the repository root, update the existing API environment with `.venv/bin/python -m pip install -r services/api/requirements-dev.lock` and `.venv/bin/python -m pip install --no-deps -e services/api`, then run `make api` and `make web`. Choose **Camera preview only** to check capture/quality without Gemini, or **Update shared memory** with Gemini enabled to save observations for Muse. The main app uses authenticated HTTP and the requested 3–5 second cadence. It does not need this standalone server or its WebSocket sender. See [the integrated guide](../docs/LIVE_SCAN.md).
+
+The instructions below still run the original, independent WebSocket prototype with its 1–30 FPS controls. They do not connect to Commonplace memory or Muse.
+
 ## Requirements
 
 - Python 3.10 or newer

@@ -33,7 +33,7 @@ export async function api<T>(path: string, token?: string, init: RequestInit = {
           : 'The request could not be completed.';
     throw new ApiError(detail, response.status);
   }
-  return response.json() as Promise<T>;
+  return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
 export function timeAgo(date: string): string {

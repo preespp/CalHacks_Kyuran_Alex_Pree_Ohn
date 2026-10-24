@@ -28,4 +28,4 @@ check:
 	$(MAKE) test
 
 test:
-	APP_ENV=development ASSISTANT_PROVIDER=disabled VISION_PROVIDER=demo STORAGE_PROVIDER=local .venv/bin/python -m pytest services/api/tests -q
+	APP_ENV=development GUEST_PROFILE_STORE=local ASSISTANT_PROVIDER=disabled VISION_PROVIDER=demo STORAGE_PROVIDER=local .venv/bin/python -m pytest services/api/tests -q

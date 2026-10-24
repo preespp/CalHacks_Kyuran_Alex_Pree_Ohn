@@ -1,6 +1,5 @@
-export type Profile = 'alex' | 'pree' | 'kyuran';
 export interface Member {
-  id: Profile;
+  id: string;
   name: string;
   household_id: string;
 }
@@ -24,7 +23,6 @@ export interface Observation {
   image_url: string | null;
   bbox: [number, number, number, number] | null;
   source: 'sample' | 'gemini' | 'reported';
-  actor_name: string;
   observed_at: string;
   kind: 'seen' | 'moved' | 'found' | 'correction';
   label?: string;

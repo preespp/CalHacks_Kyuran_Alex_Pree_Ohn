@@ -116,7 +116,7 @@ Analysis currently runs inside the capture request with a bounded provider timeo
 - **SpacetimeDB:** follow [the module instructions](spacetimedb/README.md). It is a separate implementation milestone. Setting `SPACETIMEDB_URL` does not migrate SQLite or enable subscriptions in this frontend.
 - **Muse:** `GET /api/connector/search?q=adapter` is a read-only search operation using a scoped bearer session. See [connector setup and limits](docs/SETUP.md#muse-connector). A public HTTPS endpoint and account-specific connector setup are still required.
 
-The intended cloud architecture is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). This local starter does not claim sponsor qualification or production readiness.
+The intended cloud architecture is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Follow the [Azure deployment and GoDaddy domain guide](docs/DEPLOYMENT.md) after completing its production-readiness milestones. This local starter does not claim sponsor qualification or production readiness.
 
 ## Configuration
 

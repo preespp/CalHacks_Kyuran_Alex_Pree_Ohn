@@ -1,0 +1,14 @@
+{
+  "name": "iphone-image-stream-module",
+  "license": "ISC",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "spacetimedb": "2.13.*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

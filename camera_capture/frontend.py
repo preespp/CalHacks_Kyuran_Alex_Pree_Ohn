@@ -104,8 +104,8 @@ PAGE = r"""<!doctype html>
           <div class="empty" id="cameraEmpty"><div class="camera-icon"></div><strong>Camera is off</strong><span>Start capture to preview and send frames to the backend.</span></div>
         </div>
         <div class="metrics">
-          <div class="metric">Frames sent<strong id="frameCount">0</strong></div>
-          <div class="metric">Backend receive rate<strong id="receivedFps">--</strong></div>
+          <div class="metric">Frames saved for SLAM<strong id="frameCount">0</strong></div>
+          <div class="metric">Database processing rate<strong id="receivedFps">--</strong></div>
           <div class="metric">Top candidates<strong id="topFrameCount">0 / 3</strong></div>
         </div>
       </section>
@@ -115,7 +115,7 @@ PAGE = r"""<!doctype html>
           <button id="startButton">Start capture</button>
           <button id="stopButton" class="secondary" disabled>Stop</button>
         </div>
-        <div class="target">720P PREVIEW TARGET</div>
+        <div class="target">480P JPEG UPLOADS</div>
       </div>
       <div class="capture-settings">
         <div>
@@ -127,7 +127,7 @@ PAGE = r"""<!doctype html>
           <input id="jpegQuality" type="range" min="30" max="95" value="78" aria-label="JPEG compression quality">
         </div>
       </div>
-      <div class="notice" id="notice">The live preview stays on the phone. Sampled JPEG frames go to receiver.py for quality analysis; nothing is saved to a database yet.</div>
+      <div class="notice" id="notice">Sampled JPEGs pass through SpacetimeDB into the local SLAM stream. Keep the phone orientation fixed and move slowly.</div>
     </main>
   </div>
   <script>
@@ -189,16 +189,21 @@ PAGE = r"""<!doctype html>
         document.querySelector("#frameCount").textContent = data.received_frames;
         document.querySelector("#receivedFps").textContent = `${data.received_fps} FPS`;
         document.querySelector("#topFrameCount").textContent = `${data.top_frames.length} / 3`;
+        if (data.database_ms !== undefined) {
+          setNotice(`Saved for SLAM over binary WebSocket. Queue: ${data.queue_depth}/${data.queue_capacity}; in flight: ${data.in_flight}/4. Quality: ${data.quality_ms} ms; database: ${data.database_ms} ms.`);
+        }
       } else if (data.type === "error") {
         setNotice(data.message, true);
       }
-      if (waitingForFrameResult) waitingForFrameResult();
-      waitingForFrameResult = null;
+      if (data.type === "queued" || data.type === "error") {
+        if (waitingForFrameResult) waitingForFrameResult();
+        waitingForFrameResult = null;
+      }
     }
 
     async function sendFrames() {
       const canvas = document.createElement("canvas");
-      const scale = Math.min(1, 1280 / video.videoWidth, 720 / video.videoHeight);
+      const scale = Math.min(1, 480 / video.videoHeight);
       canvas.width = Math.round(video.videoWidth * scale);
       canvas.height = Math.round(video.videoHeight * scale);
       const context = canvas.getContext("2d");
@@ -254,7 +259,8 @@ PAGE = r"""<!doctype html>
         document.querySelector("#resolution").textContent = `${settings.width || video.videoWidth} x ${settings.height || video.videoHeight}`;
         document.querySelector("#statusText").textContent = "CONNECTING";
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        const connection = new WebSocket(`${protocol}//${location.host}/ws/frames`);
+        const key = new URLSearchParams(location.hash.slice(1)).get('key') || '';
+        const connection = new WebSocket(`${protocol}//${location.host}/ws/frames?key=${encodeURIComponent(key)}`);
         socket = connection;
         connection.addEventListener("open", () => {
           if (socket !== connection) return;

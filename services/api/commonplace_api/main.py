@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import hashlib
 import re
+import time
 from typing import Optional
 from uuid import uuid4
 
@@ -16,6 +17,7 @@ from .camera_jobs import CameraJobs
 from .assistant import AssistantError, answer_question
 from .memory import search_household_memory
 from .guest_profiles import create_profiles, ProfileError
+from .frame_sink import create_frame_sink, FrameUploadError
 from .muse import memory_reply
 from .voice import transcribe
 from .models import (
@@ -37,6 +39,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     profiles = create_profiles(settings, store)
     storage = create_storage(settings)
     camera = CameraFrames()
+    frame_sink = create_frame_sink(settings)
 
     async def analyze_frame(household, scan_id, normalized, room, captured_at):
         detections = await detect(settings, normalized, room)
@@ -78,7 +81,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {"status": "ok", "vision_provider": settings.vision_provider, "storage_provider": settings.storage_provider,
                 "assistant_provider": settings.assistant_provider,
                 "memory_provider": "sqlite", "auth_mode": "guest", "sync_mode": "polling",
-                "guest_profile_store": profiles.provider}
+                "guest_profile_store": profiles.provider, "camera_frame_sink": settings.camera_frame_sink}
 
     @app.get("/api/guest/users")
     def guest_users():
@@ -222,13 +225,22 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         try:
             normalized = await run_in_threadpool(normalize_image, raw)
             captured_at = now()
+            captured_us = time.time_ns() // 1000
             stats = await run_in_threadpool(camera.observe, actor["household_id"], scan_id, normalized)
+            if frame_sink:
+                quality = stats["quality"]
+                stats["image_upload"] = await frame_sink.put(
+                    actor["household_id"], scan_id, stats["received_frames"], captured_us,
+                    quality["width"], quality["height"], normalized,
+                )
             if memory_enabled:
                 stats["analysis"] = camera_jobs.offer(actor["household_id"], scan_id, normalized, room.strip(), captured_at, analysis_interval)
             else:
                 camera_jobs.stop(actor["household_id"], scan_id)
                 stats["analysis"] = camera_jobs.status(actor["household_id"], scan_id)
             return stats
+        except FrameUploadError as error:
+            raise HTTPException(502, str(error)) from None
         except ValueError as error:
             raise HTTPException(422, str(error))
 

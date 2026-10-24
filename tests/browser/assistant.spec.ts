@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { joinAsGuest } from './guest-helpers';
 
 test('disabled assistant is honest and preserves ordinary memory search', async ({ page }) => {

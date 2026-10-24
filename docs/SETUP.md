@@ -22,7 +22,7 @@ Install SpacetimeDB with its [official installer](https://spacetimedb.com/instal
 4. Test one real demo photo using an image-capable model with structured-output support.
 5. For computer vision, set `VISION_PROVIDER=gemini`, `GEMINI_VISION_API_KEY`, and `GEMINI_MODEL` in the root `.env`, then restart the API.
 
-The user-facing assistant now uses **Meta Muse**, with separate `MODEL_API_KEY` / `META_MODEL` settings. Gemini vision does not use that key. To work on the assistant without the database or vision team, follow [Muse UI setup](MUSE_TESTING.md) and run `make muse-api` + `make muse-web` at `/muse`. All secrets stay in the repository-root `.env`, never `VITE_*` or frontend source. The old Gemini assistant and standalone script remain optional compatibility experiments; they are not part of the Muse flow.
+The user-facing assistant now uses **Meta Muse**, with separate `MODEL_API_KEY` / `META_MODEL` settings. Gemini vision does not use that key. To test the assistant with local household memory and no hosted database or vision service, follow [Muse UI setup](MUSE_TESTING.md), run `make api` + `make web`, and choose **Ask Muse**. All secrets stay in the repository-root `.env`, never `VITE_*` or frontend source. The old Gemini assistant and standalone script remain optional compatibility experiments; they are not part of the Muse flow.
 
 The API uses the official REST `generateContent` endpoint. Account availability, rate limits, and supported models can change; choose the model from your own project rather than copying a guessed model ID. See [API key setup](https://ai.google.dev/gemini-api/docs/api-key) and [image understanding](https://ai.google.dev/gemini-api/docs/image-understanding).
 

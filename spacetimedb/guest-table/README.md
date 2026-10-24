@@ -25,11 +25,7 @@ Public tables can be read at runtime without the friend's login credentials, but
 Copy [guestProfiles.ts](guestProfiles.ts) beside the teammate's module entry point. In that entry point, import:
 
 ```ts
-import {
-  guestProfile,
-  guestProfileParameters,
-  insertGuestProfile,
-} from './guestProfiles';
+import { guestProfile, guestProfileParameters, insertGuestProfile } from './guestProfiles';
 ```
 
 Add `guestProfile` to the **existing** `schema(...)` table map. For example, if their module currently declares `const spacetime = schema({ user, message })`, change only that declaration to:
@@ -88,7 +84,7 @@ Until publication is complete, leave `GUEST_PROFILE_STORE=auto` with `SPACETIMED
 4. Restart the API and refresh. Both saved profiles should remain selectable with the same IDs. `/api/guest/users` should report `storage: spacetimedb`.
 5. Confirm your friend's existing application and data still work. Do not remove their rows during this test.
 
-Temporary local profiles are not copied to the remote table automatically. The standalone `/muse` test lab remains independent of the registry.
+Temporary local profiles are not copied to the remote table automatically.
 
 Local automated verification:
 

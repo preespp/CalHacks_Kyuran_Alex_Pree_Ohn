@@ -1,19 +1,17 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './fixtures';
 import { installVoiceMocks } from './voice-mocks';
+import { chatReply, openAssistant } from './assistant-helpers';
 
 test.beforeEach(async ({ page }) => {
   await installVoiceMocks(page);
   await page.clock.install();
-  await page.route('**/api/lab/health', (route) =>
-    route.fulfill({ json: { assistant_provider: 'muse' } }),
-  );
 });
 
 async function enableWake(page: Page) {
   await page.getByRole('button', { name: 'Enable Hello', exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => window.__voiceTest.spoken))
-    .toContain('Wake listening enabled.');
+    .toContain('I’m listening. Say Hello when you need me.');
   await page.evaluate(() => window.__voiceTest.finishSpeech());
   await expect.poll(() => page.evaluate(() => !!window.__voiceTest.wake)).toBe(true);
 }
@@ -28,15 +26,15 @@ test('manual wake activation acknowledges before recording and returns to standb
     const path = new URL(request.url()).pathname;
     if (path.startsWith('/api/')) paths.push(path);
   });
-  await page.route('**/api/lab/transcribe', (route) => {
+  await page.route('**/api/voice/transcribe', (route) => {
     transcriptions++;
     return route.fulfill({ json: { text: 'Where are my keys?' } });
   });
-  await page.route('**/api/lab/chat', (route) => {
+  await page.route('**/api/chat', (route) => {
     questions.push(route.request().postDataJSON().message);
-    return route.fulfill({ json: { answer: 'Household memory is disconnected in this test.' } });
+    return route.fulfill({ json: chatReply('The keys were last seen on the desk.') });
   });
-  await page.goto('/muse');
+  await openAssistant(page);
   expect(await page.evaluate(() => window.__voiceTest.wakeStarts)).toBe(0);
   await enableWake(page);
   await page.evaluate(() => {
@@ -62,30 +60,30 @@ test('manual wake activation acknowledges before recording and returns to standb
     window.__voiceTest.amplitude = 0;
   });
   await page.clock.runFor(1450);
-  await expect(page.getByRole('log')).toContainText('memory is disconnected');
+  await expect(page.getByRole('log')).toContainText('last seen on the desk');
   expect(questions).toEqual(['Where are my keys?']);
   expect(transcriptions).toBe(1);
   expect(await page.evaluate(() => window.__voiceTest.wake)).toBeNull();
   await page.evaluate(() => window.__voiceTest.finishSpeech());
   await expect.poll(() => page.evaluate(() => !!window.__voiceTest.wake)).toBe(true);
   expect(await page.evaluate(() => window.__voiceTest.streams)).toBe(1);
-  await expect(page.getByRole('textbox', { name: 'Message Muse' })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: 'Ask about a shared object' })).toBeEnabled();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Enable Hello', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__voiceTest.wake)).toBeNull();
-  expect(paths.every((path) => path.startsWith('/api/lab/'))).toBe(true);
+  expect(paths.some((path) => path.startsWith('/api/lab/'))).toBe(false);
 });
 
 test('inline wake command uses the recognized text without a redundant Meta transcription', async ({
   page,
 }) => {
   let calls = 0;
-  await page.route('**/api/lab/chat', (route) => {
+  await page.route('**/api/chat', (route) => {
     calls++;
     expect(route.request().postDataJSON().message).toBe('Tell me a joke');
-    return route.fulfill({ json: { answer: 'A short joke.' } });
+    return route.fulfill({ json: chatReply('A short joke.') });
   });
-  await page.goto('/muse');
+  await openAssistant(page);
   await enableWake(page);
   await page.evaluate(() => window.__voiceTest.recognize('HELLO, Tell me a joke'));
   await page.evaluate(() => window.__voiceTest.finishSpeech());
@@ -97,18 +95,18 @@ test('inline wake command uses the recognized text without a redundant Meta tran
 });
 
 test('wake permission failure stops listening and preserves typing', async ({ page }) => {
-  await page.goto('/muse');
+  await openAssistant(page);
   await enableWake(page);
   const starts = await page.evaluate(() => window.__voiceTest.wakeStarts);
   await page.evaluate(() => window.__voiceTest.wakeError('not-allowed'));
   await expect(page.getByRole('alert')).toContainText('permission was denied');
   await page.clock.runFor(4000);
   expect(await page.evaluate(() => window.__voiceTest.wakeStarts)).toBe(starts);
-  await expect(page.getByRole('textbox', { name: 'Message Muse' })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: 'Ask about a shared object' })).toBeEnabled();
 });
 
 test('hidden page disables wake mode and does not resume it on return', async ({ page }) => {
-  await page.goto('/muse');
+  await openAssistant(page);
   await enableWake(page);
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
@@ -126,13 +124,13 @@ test('hidden page disables wake mode and does not resume it on return', async ({
 });
 
 test('repeated immediate browser shutdowns stop wake restarts', async ({ page }) => {
-  await page.goto('/muse');
+  await openAssistant(page);
   await enableWake(page);
   for (let index = 0; index < 3; index++) {
     await page.evaluate(() => window.__voiceTest.endWake());
     await page.clock.runFor(500);
   }
-  await expect(page.getByRole('alert')).toContainText('keeps ending wake listening');
+  await expect(page.getByRole('alert')).toContainText('Hands-free listening keeps stopping');
   expect(await page.evaluate(() => window.__voiceTest.wake)).toBeNull();
 });
 
@@ -146,7 +144,9 @@ test('a browser without wake recognition retains manual voice and keyboard acces
       value: undefined,
     });
   });
-  await page.goto('/muse');
+  await openAssistant(page);
+  // A reload restores the guest and starts keyboard navigation at the document top.
+  await page.reload();
   await expect(page.getByRole('button', { name: 'Enable Hello' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Talk to Muse', exact: true })).toBeEnabled();
   await page.keyboard.press('Tab');

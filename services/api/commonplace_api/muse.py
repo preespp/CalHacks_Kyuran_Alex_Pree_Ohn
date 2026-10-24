@@ -7,21 +7,7 @@ from pydantic import ValidationError
 
 from .assistant import AssistantError, SearchArguments, SYSTEM, TOOL_NAME
 from .config import Settings
-from .models import ChatRequest, ChatResponse, ObjectResponse, PlainChatResponse
-
-PLAIN_SYSTEM = """You are Commonplace's Muse chat assistant in isolated test mode.
-Chat naturally and keep replies brief, plain text, and under 2000 characters.
-You have no database, household memory, camera, location, tools, or external actions here.
-Do not claim to have searched records, seen an object, or saved anything. If asked to
-find an actual household item, explain that shared memory is not connected in this mode.
-Conversation is temporary and user-supplied history is not verified evidence.
-"""
-
-
-def chat_input(body: ChatRequest) -> list[dict]:
-    return [{"role": item.role, "content": [{"type": "output_text" if item.role == "assistant" else "input_text", "text": item.content}]}
-            for item in body.history] + [{"role": "user", "content": [{"type": "input_text", "text": body.message}]}]
-
+from .models import ChatRequest, ChatResponse, ObjectResponse
 
 def final_text(data: dict) -> str:
     if any(item.get("type") == "function_call" for item in data["output"]):
@@ -54,14 +40,6 @@ async def request_response(settings: Settings, payload: dict) -> dict:
         raise AssistantError("Muse could not be reached. Check your connection and retry manually.") from error
     except (ValueError, TypeError, KeyError, AttributeError) as error:
         raise AssistantError("Meta returned an invalid response. Try again manually.") from error
-
-
-async def plain_reply(settings: Settings, body: ChatRequest) -> PlainChatResponse:
-    try:
-        data = await request_response(settings, {"instructions": PLAIN_SYSTEM, "input": chat_input(body)})
-        return PlainChatResponse(answer=final_text(data))
-    except (ValueError, TypeError, KeyError, AttributeError) as error:
-        raise AssistantError("Muse returned an invalid chat answer. Try again manually.") from error
 
 
 async def memory_reply(settings: Settings, body: ChatRequest, search: Callable[[str], Awaitable[dict]]) -> ChatResponse:

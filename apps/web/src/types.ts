@@ -14,6 +14,7 @@ export interface Health {
   memory_provider: string;
   auth_mode: string;
   sync_mode: string;
+  camera_frame_sink?: 'disabled' | 'spacetimedb';
 }
 export interface Observation {
   id: string;
@@ -47,9 +48,4 @@ export interface ChatResponse {
   matches: MemoryObject[];
   total_matches: number;
   needs_disambiguation: boolean;
-}
-
-export interface PlainChatResponse {
-  provider: 'muse';
-  answer: string;
 }

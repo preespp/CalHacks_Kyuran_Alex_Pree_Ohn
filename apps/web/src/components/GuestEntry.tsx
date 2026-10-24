@@ -53,7 +53,7 @@ export default function GuestEntry({
     } catch (failure) {
       setError(
         failure instanceof ApiError && failure.status === 404
-          ? 'The user or household API is unavailable. Reload saved users, add a new user, or open Muse chat for independent testing.'
+          ? 'We couldn’t open your household. Please try again, or choose another saved name.'
           : failure instanceof Error
             ? failure.message
             : 'Could not join the household. Try again.',
@@ -67,14 +67,16 @@ export default function GuestEntry({
       <h2 id={`${inputId}-title`}>
         {switching ? 'Switch user or add someone new' : 'Welcome. What should we call you?'}
       </h2>
-      <p>
-        Enter a name to join our shared prototype household. No password, email, or account setup.
-      </p>
+      <p>Join our shared household with just your name. No password needed.</p>
       <div className="guest-directory" aria-label="Saved users">
         <h3>Saved users</h3>
         {directory ? (
           <>
-            <p className="fine-print">{directory.notice}</p>
+            <p className="fine-print">
+              {directory.storage === 'local'
+                ? 'Names are temporary and may need to be entered again later.'
+                : 'Choose a saved name to pick up where you left off.'}
+            </p>
             {directory.users.length ? (
               <div className="member-list">
                 {directory.users.map((user) => (
@@ -147,12 +149,12 @@ export default function GuestEntry({
       </form>
       {error && (
         <p className="error" role="alert">
-          {error} <a href="/muse">Open Muse chat</a>
+          {error}
         </p>
       )}
       <p id={`${inputId}-note`} className="fine-print">
-        Everyone who joins can see and update this demo household. Names are display labels, not
-        verified accounts. Use demo items rather than private household information.
+        Anyone who opens this app can join the shared household and choose a saved name. Keep
+        personal details out of your display name.
       </p>
     </section>
   );

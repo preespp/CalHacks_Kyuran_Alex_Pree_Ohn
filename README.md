@@ -65,6 +65,8 @@ Open **http://localhost:5173**, enter your name, and select **Continue as guest*
 
 The **Camera** menu opens **http://localhost:5173/camera**. It shares the same camera component as **Scan room**. Select **Camera preview only** to test video, front/back selection, JPEG compression, backend sharpness/brightness, and the three best frame candidates without Gemini. Select **Update shared memory** with Gemini enabled to save locations automatically. Camera captures once on start, then every 5 seconds by default (selectable 3, 4, or 5 seconds), with one upload in flight. The backend waits at least the selected interval after each Gemini result before analyzing the latest frame. Camera and Muse remain mounted across household screens. Both attempt to start by default, subject to browser permissions and stored on/off choices. See [persistent assistance](docs/ASSISTANCE_SESSION.md).
 
+The optional [team image-database connector](docs/IMAGE_PIPELINE.md) forwards camera JPEGs through the teammate's existing upload reducer with separate `CAMERA_SPACETIMEDB_*` settings. An authorized capture-backend token is required by that database; delivery remains disabled until it is configured. This does not replace the guest registry or import the teammate's processed vision results.
+
 After pulling this merge, keep your existing `.env` and update the backend dependencies:
 
 ```bash
@@ -96,10 +98,10 @@ services/api/
   commonplace_api/main.py        HTTP endpoints and session authorization
   commonplace_api/store.py       SQLite reference implementation
   commonplace_api/vision.py      Gemini adapter and image normalization
-  commonplace_api/muse.py        Muse plain chat and shared-memory tool loop
+  commonplace_api/muse.py        Muse shared-memory tool loop
   commonplace_api/voice.py       Muse Voice Transcribe and audio validation
-  commonplace_api/assistant_lab.py Independent backend without database or vision
   commonplace_api/storage.py     Local and private Azure image stores
+  commonplace_api/frame_sink.py  Separate camera-to-team-image-database connector
   tests/                          API, permissions, evidence, provider tests
 camera_capture/                  Original camera prototype and shared OpenCV quality selector
 services/worker/                  Documented next-stage worker contract
@@ -130,41 +132,30 @@ The capture endpoint normalizes EXIF orientation, removes metadata, resizes the 
 
 Camera ingestion returns quality/status immediately and feeds an in-process backend worker. It keeps one active inference and one latest pending frame per scan, with a bounded provider timeout. The legacy `/api/captures` endpoint remains synchronous. A durable distributed queue is still a later step. For the asynchronous design, see [the worker contract](services/worker/README.md).
 
-## Test your Muse assistant independently
+## Use Ask Muse
 
-Put your Meta Model API key and an enabled model ID in the root `.env`:
+The household **Ask Muse** screen is the only assistant UI. Configure the repository-root `.env`:
 
 ```dotenv
+ASSISTANT_PROVIDER=muse
 MODEL_API_KEY=your-private-meta-api-key
 META_MODEL=muse-spark-1.3
 META_VOICE_MODEL=muse-voice-transcribe-1.0
 ```
 
-`muse-spark-1.3` is a documented example; choose a model actually enabled for your Meta project and credit. Never put this key in the frontend. Confirm your $50 offer's eligible products and expiry in the Meta dashboard; the repository cannot verify your balance.
+Choose model IDs enabled for your Meta project. Keep keys on the backend, never in `VITE_*` settings or frontend source.
 
-Start these in two terminals:
+Run `make api` and `make web` in separate terminals. Open **http://localhost:5173/**, enter a guest name, and choose **Ask Muse**. The API initializes its local SQLite store automatically; a separate hosted database and Gemini vision are not required to test chat against existing sample records. For local-only testing, use `GUEST_PROFILE_STORE=local`, `CAMERA_FRAME_SINK=disabled`, `VISION_PROVIDER=demo`, and `STORAGE_PROVIDER=local`.
 
-```bash
-make muse-api
-```
+Typing, **Talk to Muse**, **Dictate a message**, **Read replies aloud**, and **Hello** activation remain available. Voice questions are transcribed by Meta; replies use the browser/device voice. Listening requires a supported browser, permission, and a visible page. Chat remains mounted while navigating household screens and clears on reload or guest switch.
 
-```bash
-make muse-web
-```
+Old standalone-page bookmarks redirect to the household assistant. The separate test backend and launch commands have been retired. Follow [Muse setup and testing](docs/MUSE_TESTING.md) for the full runbook and [voice acceptance checks](docs/ACCESSIBILITY.md) for device testing.
 
-Open **http://localhost:5173/muse**. This playground uses a separate local backend on **8002**. It does not initialize SQLite, log in a demo household, access photographs, or call Gemini, Azure, or SpacetimeDB. It works regardless of `ASSISTANT_PROVIDER` and ignores incomplete vision/storage setup. The homepage `/` always remains the household app; no launch command redirects it. The **Muse chat** menu link opens the temporary `/muse` test page, which reuses the household assistant layout without making household/database requests. Start `make api` as well to use household features; it initializes the current local SQLite store automatically. Restart an older Vite process to pick up the separate API proxies.
-
-Type a message and press **Send**, or tap **Talk to Muse** once for automatic conversation. Speak and pause: the app detects the end of speech, transcribes and sends it, speaks the answer, and listens again. The microphone is off while processing/playing a reply. **Stop voice session** returns to typing; eight seconds without speech ends listening. **Dictate a message** retains manual review-before-send. Spoken output uses your browser/device voice; blocked playback pauses the voice session and leaves **Read reply** available. **Hello** defaults to enabled where supported and adds foreground phrase recognition in supported browsers: say “Hello”, wait for Muse’s greeting, then ask. It returns to wake standby after one spoken reply. Browser recognition may send listening audio to the browser vendor; it is not an offline wake-word engine. Escape or Disable Hello turns it off, and hiding the page disables it. It cannot listen with the browser closed or interrupt spoken playback. See [accessible voice testing](docs/ACCESSIBILITY.md).
-
-Audio is converted in-browser to mono 24 kHz 16-bit WAV and sent through the backend to **Muse Voice Transcribe**. Clips are capped at 30 seconds and 2 MiB; the microphone stops automatically, and audio is not persisted by our backend. Messages and recordings consume Meta API usage. This is a local development playground with no user sign-in; do not deploy or tunnel it publicly.
-
-Follow [Muse installation and testing](docs/MUSE_TESTING.md) for prerequisites, UI checks, common errors, voice limitations, and the later shared-memory test. No paid requests are sent automatically by the repository's tests.
-
-### Connect Muse to shared household memory later
+## How Muse uses shared household memory
 
 Set `ASSISTANT_PROVIDER=muse` with the same Meta credentials, then use the normal `make api` + `make web` flow at `/` and join with your name. The full local app uses its existing SQLite store and guest sessions. Muse requests a read-only `search_household_memory` tool; FastAPI scopes the lookup to the session's shared demo household, reads fresh records, and returns evidence. Unknown/ambiguous matches get deterministic no-match/clarification responses. Images and observation history remain available; new camera observations carry no contributor identity. Legacy report endpoints remain for compatibility, without manual entry controls in the app.
 
-The isolated `/muse` page has no household lookup. It cannot find real household items, and its temporary conversation is not durable shared memory. In the full app, location updates come from **Scan room**, and earlier chat answers remain snapshots. The Gemini assistant adapter remains available for optional compatibility testing via `ASSISTANT_PROVIDER=gemini`; it is not used in the Muse flow.
+Location updates come from **Scan room**, and earlier chat answers remain snapshots. The Gemini assistant adapter remains available for optional compatibility testing via `ASSISTANT_PROVIDER=gemini`; it is not used in the Muse flow.
 
 ## Connect Azure and SpacetimeDB
 
@@ -179,28 +170,31 @@ The intended cloud architecture is described in [docs/ARCHITECTURE.md](docs/ARCH
 
 Copy `.env.example` to `.env`. Defaults work without credentials.
 
-| Setting                                                | Purpose                                                                                     |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| `APP_ENV`                                              | `development` locally or explicit `prototype` guest mode for a demo                         |
-| `GUEST_PROFILE_STORE`                                  | `auto` (default), `local` (reset on API restart), `sqlite`, or `spacetimedb`; profiles only |
-| `SPACETIMEDB_PROFILE_ACCESS`                           | `private` (default; owner token) or `public` (public guest-table addition; no runtime token) |
-| `SPACETIMEDB_SERVER_TOKEN`                             | Backend-only owner credential for the optional private SpacetimeDB profile registry         |
-| `DATA_DIR`                                             | Local database and image directory; relative to the repository root                         |
-| `VISION_PROVIDER`                                      | `demo` or `gemini`                                                                          |
-| `ASSISTANT_PROVIDER`                                   | `disabled` (default), `muse`, or optional `gemini`; independent of vision                   |
-| `MODEL_API_KEY`, `META_MODEL`, `META_VOICE_MODEL`      | Backend-only Muse chat and transcription settings                                           |
-| `GEMINI_CHAT_API_KEY`                                  | Optional previous Gemini assistant key                                                      |
-| `GEMINI_VISION_API_KEY`, `GEMINI_MODEL`                | Backend-only photo-analysis credentials/model                                               |
-| `GEMINI_API_KEY`                                       | Optional legacy shared-key fallback; role-specific keys take precedence                     |
-| `GEMINI_CHAT_MODEL`                                    | Function-calling model for chat; falls back to `GEMINI_MODEL`                               |
-| `STORAGE_PROVIDER`                                     | `local` or `azure`; applies to newly saved real images                                      |
-| `AZURE_STORAGE_ACCOUNT_URL`, `AZURE_STORAGE_CONTAINER` | Private Azure image store                                                                   |
-| `CORS_ORIGINS`                                         | Explicit comma-separated origins for direct API callers                                     |
-| `MAX_UPLOAD_BYTES`                                     | Per-image limit, default 8 MiB                                                              |
+| Setting                                                 | Purpose                                                                                      |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `APP_ENV`                                               | `development` locally or explicit `prototype` guest mode for a demo                          |
+| `GUEST_PROFILE_STORE`                                   | `auto` (default), `local` (reset on API restart), `sqlite`, or `spacetimedb`; profiles only  |
+| `SPACETIMEDB_PROFILE_ACCESS`                            | `private` (default; owner token) or `public` (public guest-table addition; no runtime token) |
+| `SPACETIMEDB_SERVER_TOKEN`                              | Backend-only owner credential for the optional private SpacetimeDB profile registry          |
+| `DATA_DIR`                                              | Local database and image directory; relative to the repository root                          |
+| `VISION_PROVIDER`                                       | `demo` or `gemini`                                                                           |
+| `ASSISTANT_PROVIDER`                                    | `disabled` (default), `muse`, or optional `gemini`; independent of vision                    |
+| `MODEL_API_KEY`, `META_MODEL`, `META_VOICE_MODEL`       | Backend-only Muse chat and transcription settings                                            |
+| `GEMINI_CHAT_API_KEY`                                   | Optional previous Gemini assistant key                                                       |
+| `GEMINI_VISION_API_KEY`, `GEMINI_MODEL`                 | Backend-only photo-analysis credentials/model                                                |
+| `GEMINI_API_KEY`                                        | Optional legacy shared-key fallback; role-specific keys take precedence                      |
+| `GEMINI_CHAT_MODEL`                                     | Function-calling model for chat; falls back to `GEMINI_MODEL`                                |
+| `STORAGE_PROVIDER`                                      | `local` or `azure`; applies to newly saved real images                                       |
+| `CAMERA_FRAME_SINK`                                     | `disabled` (default) or `spacetimedb`; forwards live camera frames to the team image stream  |
+| `CAMERA_SPACETIMEDB_URL`, `CAMERA_SPACETIMEDB_DATABASE` | Separate image-ingestion server/database; never replace the guest registry settings          |
+| `CAMERA_SPACETIMEDB_TOKEN`                              | Backend-only credential for an identity permitted by the image upload reducer                |
+| `AZURE_STORAGE_ACCOUNT_URL`, `AZURE_STORAGE_CONTAINER`  | Private Azure image store                                                                    |
+| `CORS_ORIGINS`                                          | Explicit comma-separated origins for direct API callers                                      |
+| `MAX_UPLOAD_BYTES`                                      | Per-image limit, default 8 MiB                                                               |
 
 Use a new `DATA_DIR` for a fresh rehearsal without deleting existing memory. Switching image storage does not migrate previously saved photographs; keep a consistent provider for a dataset.
 
-Guests enter a display name at `/` and receive a random 24-hour session. No password or email is collected. The frontend stores the token in browser `sessionStorage`, while SQLite stores only its hash. Reloading the same tab restores it; **Household** offers a **Saved users** picker, a new-user form, and **Leave guest session**. Selecting a saved user restores their ID with a new token. Switching or leaving revokes the prior token, and changing guests clears the assistant conversation. Entering the same name twice creates separate guest IDs; it does not select another user's identity. The independent `/muse` test page remains database-free and does not require a guest session.
+Guests enter a display name at `/` and receive a random 24-hour session. No password or email is collected. The frontend stores the token in browser `sessionStorage`, while SQLite stores only its hash. Reloading the same tab restores it; **Household** offers a **Saved users** picker, a new-user form, and **Leave guest session**. Selecting a saved user restores their ID with a new token. Switching or leaving revokes the prior token, and changing guests clears the assistant conversation. Entering the same name twice creates separate guest IDs; it does not select another user's identity.
 
 **User storage:** `GUEST_PROFILE_STORE=auto` defaults to a temporary in-process user list when no SpacetimeDB server token is configured and profile access remains `private`. Restarting `make api` resets selectable users and invalidates their old sessions; refreshing the browser alone does not. Images and object history are retained separately. New observations do not store a contributor; legacy actor fields are omitted from API and assistant results. Use `sqlite` for local persistence or configure SpacetimeDB for the profile registry. See [adding a public guest table to the team's module](spacetimedb/guest-table/README.md), [the separate public users-only registry](spacetimedb/users/README.md), and [saved-user setup](docs/USERS.md). The public modules are prepared locally; the agent has not published them to a hosted database.
 
@@ -229,7 +223,7 @@ To use an existing Chrome installation instead of downloading Chromium:
 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm run test:browser
 ```
 
-Browser tests launch household/Muse APIs on ports 8011/8012 and frontends on 5174/5175 (including a regression check with the obsolete redirect flag) and use a separate directory under `.data/browser-tests/`. They cover search, a report shared between two browser sessions, truthful empty states, mobile overflow, live scan intervals/cancellation/permission failures, camera-only OpenCV diagnostics, and assistant UI/error behavior. Meta/Gemini transports and audio responses are mocked in automated tests; these do not establish actual iPhone microphone/camera behavior, speech quality, or live account connectivity.
+Browser tests launch the household API on port 8011 and frontend on 5174 and use a separate directory under `.data/browser-tests/`. They cover search, a report shared between two browser sessions, truthful empty states, mobile overflow, live scan intervals/cancellation/permission failures, camera-only OpenCV diagnostics, and assistant UI/error behavior. Meta/Gemini transports and audio responses are mocked in automated tests; these do not establish actual iPhone microphone/camera behavior, speech quality, or live account connectivity.
 
 ## Next implementation milestones
 

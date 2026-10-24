@@ -7,6 +7,24 @@ export class ApiError extends Error {
   }
 }
 
+export function userFacingError(message: string, path: string): string {
+  if (
+    !/\b(api|backend|database|spacetimedb|sqlite|reducer|schema)\b|\.env|make (api|web)|[A-Z]+_[A-Z_]+|structured.output/i.test(
+      message,
+    )
+  )
+    return message;
+  if (path.includes('transcrib'))
+    return 'We couldn’t understand that recording. Please try again or type your question.';
+  if (path === '/api/guest/users')
+    return 'Saved names are unavailable right now. Please try again shortly.';
+  if (path === '/api/guest/session') return 'We couldn’t save your name. Please try again shortly.';
+  if (path.startsWith('/api/camera/') || path === '/api/captures')
+    return 'We couldn’t save this view. Please try starting the camera again.';
+  if (path.includes('chat')) return 'Muse is unavailable right now. Please try again shortly.';
+  return 'We couldn’t connect to your household. Please try again shortly.';
+}
+
 export async function api<T>(path: string, token?: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -17,21 +35,15 @@ export async function api<T>(path: string, token?: string, init: RequestInit = {
     response = await fetch(path, { ...init, headers });
   } catch {
     throw new ApiError(
-      path.startsWith('/api/lab/')
-        ? 'Could not reach Muse chat. Start make muse-api on port 8002 and try again.'
-        : 'Could not reach the household API. Start make api on port 8000, or open Muse chat for an independent conversation.',
+      'We couldn’t connect to your household. Check your connection and try again.',
       0,
     );
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const detail =
-      typeof body.detail === 'string'
-        ? body.detail
-        : path.startsWith('/api/lab/') && response.status >= 500
-          ? 'Muse chat is unavailable. Start make muse-api on port 8002 and retry.'
-          : 'The request could not be completed.';
-    throw new ApiError(detail, response.status);
+      typeof body.detail === 'string' ? body.detail : 'The request could not be completed.';
+    throw new ApiError(userFacingError(detail, path), response.status);
   }
   return (response.status === 204 ? undefined : await response.json()) as T;
 }

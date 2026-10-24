@@ -108,12 +108,20 @@ class CameraAnalysisResponse(BaseModel):
     error: Optional[str]
 
 
+class CameraUploadResponse(BaseModel):
+    provider: Literal["spacetimedb"]
+    state: Literal["uploaded"]
+    session: str
+    sequence: int
+
+
 class CameraFramesResponse(BaseModel):
     received_frames: int
     received_fps: float
     quality: FrameQualityResponse
     top_frames: list[FrameQualityResponse]
     analysis: Optional[CameraAnalysisResponse] = None
+    image_upload: Optional[CameraUploadResponse] = None
 
 
 class CaptureResponse(BaseModel):
@@ -151,11 +159,6 @@ class ChatResponse(BaseModel):
     matches: list[ObjectResponse]
     total_matches: int
     needs_disambiguation: bool
-
-
-class PlainChatResponse(BaseModel):
-    provider: Literal["muse"] = "muse"
-    answer: str
 
 
 class TranscriptResponse(BaseModel):

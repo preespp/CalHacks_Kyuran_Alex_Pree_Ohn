@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import {
   ArrowRight,
-  ArrowUpRight,
   ChevronDown,
   Camera,
   History,
@@ -21,7 +20,6 @@ export default function HouseholdLayout({
   onHousehold,
   onAbout,
   memberName,
-  testMode = false,
 }: {
   children: ReactNode;
   tab: HouseholdTab;
@@ -29,7 +27,6 @@ export default function HouseholdLayout({
   onHousehold?: () => void;
   onAbout?: () => void;
   memberName?: string;
-  testMode?: boolean;
 }) {
   function navigate(next: HouseholdTab) {
     if (onTab) onTab(next);
@@ -69,7 +66,7 @@ export default function HouseholdLayout({
           </span>
           <span>
             <strong>Our little home</strong>
-            <small>{testMode ? 'Memory disconnected' : 'Shared prototype household'}</small>
+            <small>Our shared space</small>
           </span>
           <ChevronDown size={16} />
         </button>
@@ -101,20 +98,12 @@ export default function HouseholdLayout({
             Household
           </button>
           <button
-            className={tab === 'assistant' && !testMode ? 'nav-item active' : 'nav-item'}
+            className={tab === 'assistant' ? 'nav-item active' : 'nav-item'}
             onClick={() => navigate('assistant')}
           >
             <Sparkles size={19} />
             Ask Muse
           </button>
-          <a
-            className={testMode ? 'nav-item active' : 'nav-item'}
-            href="/muse"
-            aria-current={testMode ? 'page' : undefined}
-          >
-            <ArrowUpRight size={19} />
-            Muse chat
-          </a>
         </nav>
         <div className="sidebar-note">
           <span className="note-spark">
@@ -139,8 +128,8 @@ export default function HouseholdLayout({
           <div className="profile">
             <span className="avatar avatar-pree">{memberName?.[0] ?? '–'}</span>
             <span>
-              <strong>{memberName ?? (testMode ? 'Test session' : 'Join as a guest')}</strong>
-              <small>{testMode ? 'No household sign-in' : 'Guest · no password'}</small>
+              <strong>{memberName ?? 'Join as a guest'}</strong>
+              <small>Guest · no password</small>
             </span>
           </div>
         </div>
@@ -166,14 +155,10 @@ export default function HouseholdLayout({
             className="people-button"
             onClick={onHousehold}
             disabled={!onHousehold}
-            aria-label={
-              testMode
-                ? 'Household members unavailable in test mode'
-                : 'Open guest household settings'
-            }
+            aria-label="Open guest household settings"
           >
             <span className="avatar avatar-pree">{memberName?.[0] ?? <Users size={16} />}</span>
-            <span className="people-label">{testMode ? 'Test mode' : 'Better together'}</span>
+            <span className="people-label">Better together</span>
           </button>
         </header>
         <main id="main-content" tabIndex={-1}>

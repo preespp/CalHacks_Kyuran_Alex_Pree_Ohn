@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, LoaderCircle, Square } from 'lucide-react';
-import { api } from '../api';
+import { api, userFacingError } from '../api';
 import type { Health } from '../types';
 import { mediaDefault, saveMediaPreference } from '../mediaPreferences';
 
@@ -17,6 +17,12 @@ type CameraStats = {
   received_fps: number;
   quality: Quality;
   top_frames: Quality[];
+  image_upload?: {
+    provider: 'spacetimedb';
+    state: 'uploaded';
+    session: string;
+    sequence: number;
+  } | null;
   analysis?: {
     state: string;
     processed_frames: number;
@@ -102,10 +108,11 @@ export default function CapturePanel({
   const [opening, setOpening] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [status, setStatus] = useState('Choose a camera mode, then start the camera.');
+  const [status, setStatus] = useState('Choose how you’d like to use the camera, then turn it on.');
   const [frames, setFrames] = useState(0);
   const [lastUpdate, setLastUpdate] = useState('');
   const enabled = health?.vision_provider === 'gemini';
+  const uploadEnabled = health?.camera_frame_sink === 'spacetimedb';
 
   function stop(update = true) {
     const current = task.current;
@@ -130,7 +137,7 @@ export default function CapturePanel({
       setOpening(false);
       setBusy(false);
       setResolution('Camera is off');
-      setStatus('Camera stopped. Last-seen records remain available to your household.');
+      setStatus('Camera paused. You can still find your saved items.');
     }
   }
 
@@ -170,7 +177,8 @@ export default function CapturePanel({
       canvas.width = Math.round(element.videoWidth * scale);
       canvas.height = Math.round(element.videoHeight * scale);
       const context = canvas.getContext('2d');
-      if (!context) throw new Error('This browser could not capture a camera frame.');
+      if (!context)
+        throw new Error('We couldn’t take a picture. Please try starting the camera again.');
       context.drawImage(element, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise<Blob>((resolve, reject) =>
         canvas.toBlob(
@@ -200,19 +208,21 @@ export default function CapturePanel({
       if (current.id !== id || request.signal.aborted || !current.active) return;
       if (!isCameraStats(response))
         throw new Error(
-          'The camera API returned an unexpected response. Restart make api and try again.',
+          'We couldn’t update the camera view. Please stop the camera and try again.',
         );
       setFrames((count) => count + 1);
       setStats(response);
       const analysis = response.analysis;
       if (analysis?.error) {
         stop();
-        setError(analysis.error);
+        setError(userFacingError(analysis.error, '/api/camera/frames'));
         return;
       }
       if (mode === 'preview') {
         setStatus(
-          'Camera frame checked. Preview does not call Gemini or save object observations.',
+          response.image_upload?.state === 'uploaded'
+            ? 'Your latest view has been shared. Item recognition is off in this mode.'
+            : 'Your camera is ready. Preview mode won’t add items to your memory.',
         );
       } else if (analysis && analysis.processed_frames > (current.processed ?? 0)) {
         current.processed = analysis.processed_frames;
@@ -222,7 +232,7 @@ export default function CapturePanel({
         setStatus(
           analysis.count
             ? `Updated ${analysis.count} visible ${analysis.count === 1 ? 'object' : 'objects'} in shared memory.`
-            : 'No clearly visible objects in this frame. Previous last-seen records are kept.',
+            : 'No items were clear enough to remember. Your saved items are still available.',
         );
         saved.current();
       }
@@ -232,7 +242,7 @@ export default function CapturePanel({
         setError(
           failure instanceof Error
             ? failure.message
-            : 'Frame processing failed. Restart scanning to try again.',
+            : 'We couldn’t update this view. Please start the camera again.',
         );
       }
     } finally {
@@ -250,7 +260,9 @@ export default function CapturePanel({
       return;
     setError('');
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Camera access needs a supported browser on HTTPS or localhost.');
+      setError(
+        'Camera access isn’t available here. Open the secure website in a supported browser and try again.',
+      );
       return;
     }
     const id = ++current.id;
@@ -287,8 +299,10 @@ export default function CapturePanel({
       setResolution(`${element.videoWidth} × ${element.videoHeight}`);
       setStatus(
         mode === 'memory'
-          ? 'Scanning. Frames update your household’s shared location memory.'
-          : 'Previewing. Frames go to backend quality checks only.',
+          ? 'Looking for items to remember. Move slowly and keep them in view.'
+          : uploadEnabled
+            ? 'Sharing your camera view. Item recognition is off in this mode.'
+            : 'Camera preview is on. Look around to check your view.',
       );
       const scanId = crypto.randomUUID();
       current.scanId = scanId;
@@ -325,9 +339,12 @@ export default function CapturePanel({
       <p className="capture-brief">
         Camera {active ? 'on' : opening ? 'requesting permission' : 'off'} · Capture every {seconds}{' '}
         seconds
+        {uploadEnabled ? ' · Sharing with your household' : ''}
       </p>
       <p className="muted">
-        Preview your camera and check frame quality, or scan visible objects into shared memory.
+        {uploadEnabled
+          ? 'Share your camera view with your household. Choose “Update shared memory” to also remember visible items.'
+          : 'Look around the room to remember where things are, or preview your camera first.'}
       </p>
       <div className="camera-settings">
         <label className="field-label">
@@ -340,7 +357,9 @@ export default function CapturePanel({
             <option value="memory" disabled={!enabled}>
               Update shared memory
             </option>
-            <option value="preview">Camera preview only</option>
+            <option value="preview">
+              {uploadEnabled ? 'Share camera view only' : 'Camera preview only'}
+            </option>
           </select>
         </label>
         <label className="field-label">
@@ -368,9 +387,9 @@ export default function CapturePanel({
         </label>
       </div>
       <label className="field-label camera-quality-control">
-        JPEG quality: {jpegQuality}%
+        Photo quality: {jpegQuality}%
         <input
-          aria-label="JPEG compression quality"
+          aria-label="Photo quality"
           type="range"
           min="30"
           max="95"
@@ -380,10 +399,10 @@ export default function CapturePanel({
         />
       </label>
       <p className="fine-print">
-        {resolution} · 720p preview target · JPEG quality controls compression, not focus.
+        Higher photo quality keeps more detail. Good lighting and a steady hand help too.
       </p>
       <label className="field-label">
-        Camera capture interval
+        Update frequency
         <select
           value={seconds}
           disabled={active || opening}
@@ -419,11 +438,10 @@ export default function CapturePanel({
       )}
       {!enabled && (
         <div className="notice">
-          <strong>Shared-memory scanning needs Gemini vision</strong>
+          <strong>Remembering new items isn’t available yet</strong>
           <p>
-            Enable the vision integration to process camera frames. Existing sample records remain
-            available for search. Camera preview and quality checks work without a Gemini key and do
-            not write object memory.
+            You can still use the camera and explore saved items. New items won’t be added to your
+            memory until recognition is available.
           </p>
         </div>
       )}
@@ -437,7 +455,11 @@ export default function CapturePanel({
             }}
           >
             <Square size={18} />
-            {mode === 'memory' ? 'Stop scanning' : 'Stop camera preview'}
+            {mode === 'memory'
+              ? 'Stop scanning'
+              : uploadEnabled
+                ? 'Stop sharing camera'
+                : 'Stop camera preview'}
           </button>
         ) : (
           <button
@@ -449,68 +471,80 @@ export default function CapturePanel({
             }}
           >
             <Camera size={18} />
-            {mode === 'memory' ? 'Start scanning' : 'Start camera preview'}
+            {mode === 'memory'
+              ? 'Start scanning'
+              : uploadEnabled
+                ? 'Share camera view'
+                : 'Start camera preview'}
           </button>
         )}
         {busy && (
           <span>
-            <LoaderCircle className="spin" size={16} /> Processing a frame…
+            <LoaderCircle className="spin" size={16} /> Updating your view…
           </span>
         )}
       </div>
       <p role="status">{status}</p>
       <p className="fine-print">
-        Processed frames: {frames}
+        Views captured: {frames}
         {lastUpdate ? ` · Last update: ${lastUpdate}` : ''}
       </p>
+      {stats?.image_upload?.state === 'uploaded' && (
+        <p className="fine-print">
+          {mode === 'memory'
+            ? 'Your latest view has been shared. New items appear after they’ve been recognized.'
+            : 'Your latest view has been shared. This mode doesn’t add items to your memory.'}
+        </p>
+      )}
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
       {stats && (
-        <section className="camera-diagnostics" aria-label="Backend frame quality">
-          <h3>Backend frame quality</h3>
-          <dl className="camera-metrics">
-            <div>
-              <dt>Sharpness</dt>
-              <dd>{stats.quality.sharpness}</dd>
-            </div>
-            <div>
-              <dt>Brightness</dt>
-              <dd>{stats.quality.brightness} / 255</dd>
-            </div>
-            <div>
-              <dt>Receive rate</dt>
-              <dd>{stats.received_fps} FPS</dd>
-            </div>
-          </dl>
-          <p className="fine-print">
-            Top candidates: {stats.top_frames.length} / 3 · ranked within this scan
-          </p>
-          <ol>
-            {stats.top_frames.map((frame) => (
-              <li key={frame.frame_id}>
-                Frame {frame.frame_id}: score {frame.quality_score} · {frame.width} × {frame.height}
-              </li>
-            ))}
-          </ol>
-          <p className="fine-print">
-            Quality ranking is a sharpness/exposure heuristic. Older top frames are diagnostics;
-            memory uses the newly captured frame.
-          </p>
+        <section className="camera-diagnostics" aria-label="Picture quality">
+          <p>Move slowly and keep items well lit for a clearer view.</p>
+          <details>
+            <summary>View camera details</summary>
+            <p className="fine-print">Camera resolution: {resolution}</p>
+            <dl className="camera-metrics">
+              <div>
+                <dt>Clarity</dt>
+                <dd>{stats.quality.sharpness}</dd>
+              </div>
+              <div>
+                <dt>Brightness</dt>
+                <dd>{Math.round((stats.quality.brightness / 255) * 100)}%</dd>
+              </div>
+              <div>
+                <dt>Photo rate</dt>
+                <dd>{stats.received_fps} FPS</dd>
+              </div>
+            </dl>
+            <p className="fine-print">Clearest views from this scan: {stats.top_frames.length}</p>
+            <ol>
+              {stats.top_frames.map((frame) => (
+                <li key={frame.frame_id}>
+                  Photo {frame.frame_id} · {frame.width} × {frame.height}
+                </li>
+              ))}
+            </ol>
+            <p className="fine-print">
+              These are the clearest views from this scan. New memories use your latest view.
+            </p>
+          </details>
         </section>
       )}
       <p className="fine-print">
-        Capture one frame on start, then every {seconds} seconds, with one upload at a time. The
-        backend waits at least {seconds} seconds after each analysis result before analyzing the
-        latest frame; older queued frames are replaced. Camera capture continues across app screens.
-        Hiding or closing the website stops capture; a received frame may still finish processing.
+        Your view refreshes every {seconds} seconds. You can visit other screens in Commonplace
+        while the camera stays on. Switching away from this website or locking your phone pauses it.
       </p>
       <p className="fine-print">
         {mode === 'memory'
-          ? 'Frames go to Gemini vision; saved evidence is shared with this prototype household. Boxes are image coordinates, not room coordinates.'
-          : 'Preview frames go to the backend for quality checks. Up to three JPEGs are held temporarily in memory; no object observations or photos are saved to disk or cloud storage.'}
+          ? 'Recognized items and their last-seen photos are shared with your household. Highlighted boxes show items in the saved photo, not a walking direction.'
+          : uploadEnabled
+            ? 'This mode shares your camera view without adding items to your memory here.'
+            : 'Preview helps you check your view. Photos aren’t saved or added to your shared memory in this mode.'}
       </p>
     </div>
   );

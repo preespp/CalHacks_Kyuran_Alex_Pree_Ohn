@@ -34,6 +34,10 @@ class Settings:
     spacetime_database: str = ""
     spacetime_token: str = ""
     spacetime_profile_access: str = "private"
+    camera_frame_sink: str = "disabled"
+    camera_spacetime_url: str = ""
+    camera_spacetime_database: str = ""
+    camera_spacetime_token: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -63,6 +67,10 @@ class Settings:
             spacetime_database=os.getenv("SPACETIMEDB_DATABASE", ""),
             spacetime_token=os.getenv("SPACETIMEDB_SERVER_TOKEN", ""),
             spacetime_profile_access=os.getenv("SPACETIMEDB_PROFILE_ACCESS", "private"),
+            camera_frame_sink=os.getenv("CAMERA_FRAME_SINK", "disabled"),
+            camera_spacetime_url=os.getenv("CAMERA_SPACETIMEDB_URL", ""),
+            camera_spacetime_database=os.getenv("CAMERA_SPACETIMEDB_DATABASE", ""),
+            camera_spacetime_token=os.getenv("CAMERA_SPACETIMEDB_TOKEN", ""),
         )
 
     @property
@@ -74,6 +82,17 @@ class Settings:
         return self.gemini_vision_api_key or self.gemini_api_key
 
     def validate(self) -> None:
+        if self.camera_frame_sink not in {"disabled", "spacetimedb"}:
+            raise RuntimeError("CAMERA_FRAME_SINK must be disabled or spacetimedb")
+        if self.camera_frame_sink == "spacetimedb":
+            url = urlsplit(self.camera_spacetime_url)
+            if (url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password
+                    or url.query or url.fragment or url.path not in {"", "/"}):
+                raise RuntimeError("CAMERA_SPACETIMEDB_URL must be an HTTP(S) server origin without credentials or a path")
+            if url.scheme == "http" and url.hostname not in {"localhost", "127.0.0.1", "::1"}:
+                raise RuntimeError("Remote camera SpacetimeDB requires HTTPS")
+            if not re.fullmatch(r"[A-Za-z0-9._-]+", self.camera_spacetime_database):
+                raise RuntimeError("Set a valid CAMERA_SPACETIMEDB_DATABASE")
         if self.guest_profile_store not in {"auto", "local", "sqlite", "spacetimedb"}:
             raise RuntimeError("GUEST_PROFILE_STORE must be auto, local, sqlite, or spacetimedb")
         if self.spacetime_profile_access not in {"private", "public"}:

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { joinAsGuest } from './guest-helpers';
 
 test('guest entry needs only a name, restores on reload, and leave revokes the session', async ({
@@ -100,7 +100,7 @@ test('unavailable saved-user database displays the failure instead of an empty d
     route.fulfill({ status: 503, json: { detail: 'User database is unavailable.' } }),
   );
   await page.goto('/');
-  await expect(page.getByRole('alert')).toContainText('User database is unavailable.');
+  await expect(page.getByRole('alert')).toContainText('Saved names are unavailable right now.');
   await expect(page.getByText('No saved users yet. Add the first one below.')).not.toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Your name' })).toBeEnabled();
 });

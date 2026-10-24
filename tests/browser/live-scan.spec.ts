@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './fixtures';
 import { joinAsGuest } from './guest-helpers';
 import { installCameraMocks } from './camera-mocks';
 import { installVoiceMocks } from './voice-mocks';
@@ -28,7 +28,10 @@ function stats(index: number, analyzed = 0) {
   };
 }
 
-async function prepare(page: Page, { vision = true, voice = false, automatic = false } = {}) {
+async function prepare(
+  page: Page,
+  { vision = true, voice = false, automatic = false, imageUploads = false } = {},
+) {
   if (voice) await installVoiceMocks(page);
   await installCameraMocks(page);
   if (automatic)
@@ -43,6 +46,7 @@ async function prepare(page: Page, { vision = true, voice = false, automatic = f
         ...health,
         vision_provider: vision ? 'gemini' : 'demo',
         assistant_provider: voice ? 'muse' : 'disabled',
+        camera_frame_sink: imageUploads ? 'spacetimedb' : 'disabled',
       },
     }),
   );
@@ -85,7 +89,7 @@ for (const seconds of [3, 4, 5]) {
     await openCamera(page);
     await page.clock.install();
     await page.clock.pauseAt(new Date(Date.now() + 1000));
-    const interval = page.getByRole('combobox', { name: 'Camera capture interval' });
+    const interval = page.getByRole('combobox', { name: 'Update frequency' });
     await expect(interval).toHaveValue('5');
     await expect(interval.locator('option')).toHaveText([
       'Every 3 seconds',
@@ -95,7 +99,7 @@ for (const seconds of [3, 4, 5]) {
     await interval.selectOption(String(seconds));
     await page.getByRole('button', { name: 'Start scanning', exact: true }).click();
     await expect.poll(() => bodies.length).toBe(1);
-    await expect(page.getByText('Processed frames: 1', { exact: false })).toBeVisible();
+    await expect(page.getByText('Views captured: 1', { exact: false })).toBeVisible();
     await page.clock.runFor(seconds * 1000 - 100);
     expect(bodies).toHaveLength(1);
     await page.clock.runFor(200);
@@ -185,7 +189,7 @@ test('camera-only mode uses actual backend quality checks without model or objec
   const headers = { Authorization: `Bearer ${token}` };
   const before = await (await page.request.get('/api/objects', { headers })).json();
   await page.getByRole('button', { name: 'Start camera preview', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Backend frame quality' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Picture quality' })).toBeVisible();
   expect(await (await page.request.get('/api/objects', { headers })).json()).toEqual(before);
   await page.getByRole('button', { name: 'Household', exact: true }).click();
   await page
@@ -215,10 +219,10 @@ test('front-camera/JPEG settings and 3-second interval are sent to the backend',
   await prepare(page);
   await openCamera(page);
   await page.getByRole('combobox', { name: 'Choose camera' }).selectOption('user');
-  await page.getByRole('combobox', { name: 'Camera capture interval' }).selectOption('3');
-  await page.getByRole('slider', { name: 'JPEG compression quality' }).fill('42');
+  await page.getByRole('combobox', { name: 'Update frequency' }).selectOption('3');
+  await page.getByRole('slider', { name: 'Photo quality' }).fill('42');
   await page.getByRole('button', { name: 'Start scanning', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Backend frame quality' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Picture quality' })).toBeVisible();
   const state = await cameraState(page);
   expect(state.jpegQuality).toBe(0.42);
   expect(state.constraints[0].video).toMatchObject({ facingMode: { ideal: 'user' } });
@@ -247,7 +251,7 @@ test('slow frame ingestion skips busy ticks and stop ignores late responses', as
   release();
   await page.clock.runFor(16000);
   expect(frames).toBe(1);
-  await expect(page.getByText('Processed frames: 0', { exact: false })).toBeVisible();
+  await expect(page.getByText('Views captured: 0', { exact: false })).toBeVisible();
 });
 
 test('processing status returns to the normal message and camera continues on another screen', async ({
@@ -270,13 +274,13 @@ test('processing status returns to the normal message and camera continues on an
   await page.clock.install();
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   await page.getByRole('button', { name: 'Start camera preview', exact: true }).click();
-  await expect(page.getByText('Processing a frame…', { exact: true })).toBeVisible();
+  await expect(page.getByText('Updating your view…', { exact: true })).toBeVisible();
   release();
-  await expect(page.getByText('Processing a frame…', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Updating your view…', { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole('region', { name: 'Household camera', exact: true }).getByRole('status'),
-  ).toContainText('Camera frame checked.');
-  await expect(page.getByRole('region', { name: 'Backend frame quality' })).toBeVisible();
+  ).toContainText('Your camera is ready.');
+  await expect(page.getByRole('region', { name: 'Picture quality' })).toBeVisible();
   await page.getByRole('button', { name: 'Our memory', exact: true }).click();
   await page.clock.runFor(5100);
   await expect.poll(() => frames).toBe(2);
@@ -294,13 +298,49 @@ test('incomplete camera responses show a recoverable error without crashing the 
   await prepare(page, { vision: false });
   await openCamera(page);
   await page.getByRole('button', { name: 'Start camera preview', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('camera API returned an unexpected response');
+  await expect(page.getByRole('alert')).toContainText('We couldn’t update the camera view');
   await expect(
     page.getByRole('button', { name: 'Start camera preview', exact: true }),
   ).toBeEnabled();
-  await expect(page.getByRole('region', { name: 'Backend frame quality' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Picture quality' })).toHaveCount(0);
   expect((await cameraState(page)).stopped).toBe(1);
   expect(errors).toEqual([]);
+});
+
+test('image uploads work without Gemini and show upload confirmation separately from analysis', async ({
+  page,
+}) => {
+  await page.route('**/api/camera/frames', (route) =>
+    route.fulfill({
+      json: {
+        ...stats(1),
+        image_upload: {
+          provider: 'spacetimedb',
+          state: 'uploaded',
+          session: 'commonplace:demo-home:test',
+          sequence: 1,
+        },
+      },
+    }),
+  );
+  await prepare(page, { vision: false, imageUploads: true });
+  await openCamera(page);
+  await expect(page.getByRole('combobox', { name: 'Camera mode' })).toContainText(
+    'Share camera view only',
+  );
+  await page.getByRole('button', { name: 'Share camera view', exact: true }).click();
+  await expect(
+    page.getByRole('region', { name: 'Household camera', exact: true }).getByRole('status'),
+  ).toContainText('Your latest view has been shared. Item recognition is off in this mode.');
+  await expect(
+    page.getByText(
+      'Your latest view has been shared. This mode doesn’t add items to your memory.',
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Update frequency' })).toHaveValue('5');
+  await page.getByRole('button', { name: 'Stop sharing camera', exact: true }).click();
+  expect((await cameraState(page)).stopped).toBe(1);
 });
 
 test('hiding the site stops the camera and wake listening', async ({ page }) => {

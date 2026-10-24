@@ -1,6 +1,6 @@
 # Persistent camera and Muse assistance
 
-The household app now keeps one camera controller and one Muse assistant mounted for the signed-in guest. Camera, Our memory, Recent activity, and Ask Muse use navigation without reloading the browser document. Switching these screens changes the displayed controls, not the media session. Chat stays available across these household screens; switching guests or reloading clears it. The independent `/muse` test lab remains a separate, database-free page.
+The household app now keeps one camera controller and one Muse assistant mounted for the signed-in guest. Camera, Our memory, Recent activity, and Ask Muse use navigation without reloading the browser document. Switching these screens changes the displayed controls, not the media session. Chat stays available across these household screens; switching guests or reloading clears it.
 
 ## Enable, pause, and stop
 
@@ -16,9 +16,9 @@ Hiding the tab, leaving the website, locking/suspending the phone, or reloading 
 
 ## Capture and analysis timing
 
-| Work                   | Default                                                        | Purpose                                           |
-| ---------------------- | -------------------------------------------------------------- | ------------------------------------------------- |
-| Local video preview    | Device-dependent, requested up to 30 FPS                       | Show a live view                                  |
+| Work                   | Default                                                              | Purpose                                           |
+| ---------------------- | -------------------------------------------------------------------- | ------------------------------------------------- |
+| Local video preview    | Device-dependent, requested up to 30 FPS                             | Show a live view                                  |
 | JPEG uploads           | Every 5 seconds; choices 3, 4, 5 seconds                             | Feed backend quality checks and the latest frame  |
 | Gemini memory analysis | At least the selected capture interval after each completed analysis | Recognize objects and save last-seen observations |
 

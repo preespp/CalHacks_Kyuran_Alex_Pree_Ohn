@@ -130,7 +130,7 @@ export default function App() {
         if (!cancelled) {
           setError(
             error instanceof ApiError && error.status === 404
-              ? 'The household API is unavailable on this server. Muse chat can run independently.'
+              ? 'Your household is unavailable right now. Please try again shortly.'
               : error instanceof Error
                 ? error.message
                 : 'Could not load household memory.',
@@ -235,7 +235,7 @@ export default function App() {
               {tab === 'memory'
                 ? 'For the “where did we put that?” moments.'
                 : tab === 'camera'
-                  ? 'Live camera, frame quality, and shared object locations.'
+                  ? 'Look around your room and remember where things are.'
                   : tab === 'assistant'
                     ? 'Find the little things, with Muse and shared evidence.'
                     : 'The things your household has remembered along the way.'}
@@ -257,7 +257,6 @@ export default function App() {
           <div className="error-banner" role="alert">
             <span>{error}</span>
             <button onClick={() => setRevision((value) => value + 1)}>Retry</button>
-            <a href="/muse">Open Muse chat</a>
           </div>
         )}
 
@@ -458,13 +457,9 @@ export default function App() {
             <House size={14} />
             commonplace.
           </span>
-          <span>
-            {session
-              ? `${health?.vision_provider === 'gemini' ? 'Gemini photo analysis' : 'Sample data'} · Shared updates every 5 seconds`
-              : 'Name-only guest prototype'}
-          </span>
+          <span>© 2026 Commonplace · Built at Cal Hacks</span>
           <button onClick={() => setModal('about')}>
-            Hackathon starter <ArrowUpRight size={12} />
+            How it works <ArrowUpRight size={12} />
           </button>
         </footer>
       </HouseholdLayout>
@@ -505,8 +500,8 @@ export default function App() {
             <div>
               <span>01</span>
               <p>
-                <strong>Scan a room.</strong> The camera samples a frame every 3–5 seconds. Gemini
-                describes visible objects and their last-seen locations.
+                <strong>Let your home remember.</strong> Point the camera around a room to remember
+                visible objects and where they were last seen.
               </p>
             </div>
             <div>

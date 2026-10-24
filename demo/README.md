@@ -11,7 +11,7 @@ Enable Gemini vision and Muse using the root README and [live scan guide](../doc
 | 1:55–2:25 | Pree asks Muse by voice where the object was last seen              | Hear the latest location and uncertainty; open the saved evidence. Source/time matter. Keep typing available.                                           |
 | 2:25–3:00 | Stop scanning and explain architecture/status                       | Camera → FastAPI → Gemini vision → shared observations → Muse read-only lookup. SQLite runs locally; object-memory SpacetimeDB integration is separate. |
 
-Verify actual Meta/Gemini requests with your credentials before describing the integration as live. Without credentials, demonstrate labeled sample search and the honest disabled states. The independent `/muse` playground has no household memory and is only for assistant/voice testing. Keep a recording of the real working flow for network problems; no consumer Muse connector is required.
+Verify actual Meta/Gemini requests with your credentials before describing the integration as live. Without credentials, demonstrate labeled sample search and the honest disabled states. Keep a recording of the real working flow for network problems; no consumer Muse connector is required.
 
 Try an unknown query such as “purple umbrella.” The correct result is no stored match, not an invented location. Test ambiguous candidates too. The original `desk.svg` illustration remains labeled sample evidence; its boxes are image regions, not physical navigation anchors.
 

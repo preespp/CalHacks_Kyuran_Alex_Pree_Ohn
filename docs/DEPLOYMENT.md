@@ -37,7 +37,7 @@ Merely setting `SPACETIMEDB_URL` does not replace `Store(...)` in `main.py`. For
 
 Test real Gemini room scanning locally before the cloud deployment; follow [the scan acceptance guide](LIVE_SCAN.md). Use several distinctive objects, verify box placement after image rotation, and exercise quota/error responses. Set per-member upload limits for the public endpoint. Enable sample seeding only in an intentional demo environment.
 
-The live camera now captures every 3–5 seconds (default 5 seconds) and uses a bounded in-process analysis worker; durable distributed jobs, embeddings, on-device inference, and SLAM remain later milestones. Use one API process/replica for this prototype's temporary stream state. See [the assistance lifecycle](ASSISTANCE_SESSION.md). Test the in-app Muse assistant using [the two-person runbook](MUSE_TESTING.md), including fresh updates, unknown/ambiguous matches, and quota failures. Add per-member chat rate/concurrency limits and project spending controls before public access. No consumer Muse connector is required. Do not deploy the local `/api/lab` sandbox; deploy the session-scoped household app in prototype mode. Remove the temporary `/muse` route and menu link once integration passes; keep the shared assistant UI and voice hooks in the household app. See [accessible voice testing](ACCESSIBILITY.md) for the current **Hello** activation flow and device checks.
+The live camera now captures every 3–5 seconds (default 5 seconds) and uses a bounded in-process analysis worker; durable distributed jobs, embeddings, on-device inference, and SLAM remain later milestones. Use one API process/replica for this prototype's temporary stream state. See [the assistance lifecycle](ASSISTANCE_SESSION.md). Test the in-app Muse assistant using [the two-person runbook](MUSE_TESTING.md), including fresh updates, unknown/ambiguous matches, and quota failures. Add per-member chat rate/concurrency limits and project spending controls before public access. No consumer Muse connector is required. Deploy the session-scoped household app in prototype mode. Ask Muse includes chat and voice; the separate test page, menu link, and sandbox backend have been retired. See [accessible voice testing](ACCESSIBILITY.md) for the current **Hello** activation flow and device checks.
 
 ## 2. Use one public app origin for the first release
 
@@ -151,24 +151,24 @@ In the Azure portal, search **Container Apps → Create → Container App**. Cho
 - Start with a small CPU/memory allocation and a bounded replica count. Keeping one replica warm during certificate issuance and the hackathon demo avoids a cold-start surprise; it also has a running cost.
 - Configure startup/liveness and readiness probes. `/api/health` currently reports process configuration, not dependency readiness; add a separate readiness check for required remote state. Do not make paid model calls on every probe.
 
-| Environment variable             | Release value                                                                                           |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `GUEST_PROFILE_STORE`            | `local` for disposable tests, `sqlite` for local persistence, or `spacetimedb` for the profile registry |
+| Environment variable             | Release value                                                                                               |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `GUEST_PROFILE_STORE`            | `local` for disposable tests, `sqlite` for local persistence, or `spacetimedb` for the profile registry     |
 | `SPACETIMEDB_PROFILE_ACCESS`     | `public` for a public guest table/users-only registry, or `private` (default) for an older private registry |
-| `SPACETIMEDB_SERVER_TOKEN`       | Backend-only app secret; database-owner token for private profile reads                                 |
-| `APP_ENV`                        | `prototype` for this name-only shared demo                                                              |
-| `VISION_PROVIDER`                | `gemini`                                                                                                |
-| `MODEL_API_KEY`                  | Reference to the Meta Model API app secret                                                              |
-| `META_MODEL`, `META_VOICE_MODEL` | Tested Muse chat/transcription model IDs                                                                |
-| `GEMINI_CHAT_API_KEY`            | Optional previous Gemini adapter secret                                                                 |
-| `GEMINI_VISION_API_KEY`          | Reference to the vision team's app secret                                                               |
-| `GEMINI_MODEL`                   | Tested model ID available to your project                                                               |
-| `ASSISTANT_PROVIDER`             | `muse` after live assistant verification                                                                |
-| `GEMINI_CHAT_MODEL`              | Optional previous Gemini adapter model ID                                                               |
-| `STORAGE_PROVIDER`               | `azure`                                                                                                 |
-| `AZURE_STORAGE_ACCOUNT_URL`      | Your storage account URL                                                                                |
-| `AZURE_STORAGE_CONTAINER`        | `scene-images`                                                                                          |
-| `AZURE_CLIENT_ID`                | The attached user-assigned identity's client ID                                                         |
+| `SPACETIMEDB_SERVER_TOKEN`       | Backend-only app secret; database-owner token for private profile reads                                     |
+| `APP_ENV`                        | `prototype` for this name-only shared demo                                                                  |
+| `VISION_PROVIDER`                | `gemini`                                                                                                    |
+| `MODEL_API_KEY`                  | Reference to the Meta Model API app secret                                                                  |
+| `META_MODEL`, `META_VOICE_MODEL` | Tested Muse chat/transcription model IDs                                                                    |
+| `GEMINI_CHAT_API_KEY`            | Optional previous Gemini adapter secret                                                                     |
+| `GEMINI_VISION_API_KEY`          | Reference to the vision team's app secret                                                                   |
+| `GEMINI_MODEL`                   | Tested model ID available to your project                                                                   |
+| `ASSISTANT_PROVIDER`             | `muse` after live assistant verification                                                                    |
+| `GEMINI_CHAT_MODEL`              | Optional previous Gemini adapter model ID                                                                   |
+| `STORAGE_PROVIDER`               | `azure`                                                                                                     |
+| `AZURE_STORAGE_ACCOUNT_URL`      | Your storage account URL                                                                                    |
+| `AZURE_STORAGE_CONTAINER`        | `scene-images`                                                                                              |
+| `AZURE_CLIENT_ID`                | The attached user-assigned identity's client ID                                                             |
 
 See [Container Apps deployment](https://learn.microsoft.com/en-us/azure/container-apps/quickstart-code-to-cloud) and [health probes](https://learn.microsoft.com/en-us/azure/container-apps/health-probes).
 

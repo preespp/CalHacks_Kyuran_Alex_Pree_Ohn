@@ -8,7 +8,7 @@ See [the assistance-session guide](ASSISTANCE_SESSION.md) for the current archit
 
 Camera and Muse stay mounted across household screens. Camera defaults to enabled and captures every **5 seconds by default**, selectable 3/4/5 seconds; Hello listening defaults to enabled when supported and Muse is configured. Browser permissions can require a Start/Turn on tap. Use the same on/off controls from Camera, Ask Muse, or the compact status panel. Hiding/leaving the website still stops capture and listening.
 
-The **Camera capture interval** controls uploads and the minimum wait after each Gemini result, with a default of five seconds and choices of 3/4/5 seconds. One frame is captured immediately on start. Analysis can be slower than capture because it also includes model latency. The backend worker processes the latest frame, bounds pending work, and updates locations without manual entry. The original quality selector still reports sharpness, brightness, and three top-ranked frame candidates. Camera-only preview works without Gemini and writes no object observations.
+The **Update frequency** controls uploads and the minimum wait after each Gemini result, with a default of five seconds and choices of 3/4/5 seconds. One frame is captured immediately on start. Analysis can be slower than capture because it also includes model latency. The backend worker processes the latest frame, bounds pending work, and updates locations without manual entry. The original quality selector still reports sharpness, brightness, and three top-ranked frame candidates. Camera-only preview works without Gemini and writes no object observations.
 
 After pulling, update dependencies without overwriting `.env`:
 
@@ -17,7 +17,7 @@ After pulling, update dependencies without overwriting `.env`:
 .venv/bin/python -m pip install --no-deps -e services/api
 ```
 
-Run `make api` and `make web`, join by name, and grant device permissions. In Camera, stop before changing mode, room, front/back choice, compression, or capture interval; then restart. Enable Gemini credentials for shared-memory mode and Meta credentials for Muse. The independent `/muse` lab remains separate from household memory and camera.
+Run `make api` and `make web`, join by name, and grant device permissions. In Camera, stop before changing mode, room, front/back choice, compression, or capture interval; then restart. Enable Gemini credentials for shared-memory mode and Meta credentials for Muse.
 
 For a two-user test, scan a distinctive object, ask Muse from the second session, move the visible object to another surface during the same scan, and wait for the next analyzed frame. A new question must retrieve fresh evidence without attributing it to a person. Test camera/voice simultaneously on the actual target iPhone.
 

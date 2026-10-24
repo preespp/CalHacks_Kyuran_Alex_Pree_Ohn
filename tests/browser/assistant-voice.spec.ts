@@ -1,7 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { installVoiceMocks } from './voice-mocks';
+import { chatReply, openAssistant } from './assistant-helpers';
 
-test('isolated Muse page supports typing and context without household requests', async ({
+test('Ask Muse supports typing, bounded context, and clearing the conversation', async ({
   page,
 }) => {
   const paths: string[] = [];
@@ -9,24 +10,18 @@ test('isolated Muse page supports typing and context without household requests'
     const path = new URL(request.url()).pathname;
     if (path.startsWith('/api/')) paths.push(path);
   });
-  await page.route('**/api/lab/health', (route) =>
-    route.fulfill({
-      json: { assistant_provider: 'muse', configured: true, memory_provider: 'none' },
-    }),
-  );
   const messages: { message: string; history: unknown[] }[] = [];
-  await page.route('**/api/lab/chat', (route) => {
+  await page.route('**/api/chat', (route) => {
     messages.push(route.request().postDataJSON());
     return route.fulfill({
-      json: {
-        provider: 'muse',
-        answer: messages.length === 1 ? 'Hello, I am Muse.' : 'Yes, that was our earlier greeting.',
-      },
+      json: chatReply(
+        messages.length === 1 ? 'Hello, I am Muse.' : 'Yes, that was our earlier greeting.',
+      ),
     });
   });
-  await page.goto('/muse');
+  await openAssistant(page);
   await expect(page.getByRole('heading', { name: 'Just ask your household.' })).toBeVisible();
-  const input = page.getByRole('textbox', { name: 'Message Muse' });
+  const input = page.getByRole('textbox', { name: 'Ask about a shared object' });
   await expect(input).toBeEnabled();
   expect(messages).toHaveLength(0);
   await input.fill('Hello');
@@ -36,7 +31,7 @@ test('isolated Muse page supports typing and context without household requests'
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('log')).toContainText('our earlier greeting');
   expect(messages[1].history).toHaveLength(2);
-  expect(paths.every((path) => path.startsWith('/api/lab/'))).toBeTruthy();
+  expect(paths.some((path) => path.startsWith('/api/lab/'))).toBe(false);
   await page.getByRole('button', { name: 'Clear chat' }).click();
   await expect(page.getByRole('log')).not.toContainText('our earlier greeting');
 });
@@ -45,22 +40,19 @@ test('Muse microphone transcribes to editable text, reads replies, and keeps typ
   page,
 }) => {
   await installVoiceMocks(page);
-  await page.route('**/api/lab/health', (route) =>
-    route.fulfill({ json: { assistant_provider: 'muse', configured: true } }),
-  );
   let transcriptions = 0;
-  await page.route('**/api/lab/transcribe', async (route) => {
+  await page.route('**/api/voice/transcribe', async (route) => {
     transcriptions++;
     expect(route.request().postDataBuffer()?.includes(Buffer.from('RIFF'))).toBeTruthy();
     await route.fulfill({ json: { provider: 'muse', text: 'Tell me a joke.' } });
   });
-  await page.route('**/api/lab/chat', (route) =>
-    route.fulfill({ json: { provider: 'muse', answer: 'Here is a short joke from Muse.' } }),
+  await page.route('**/api/chat', (route) =>
+    route.fulfill({ json: chatReply('Here is a short joke from Muse.') }),
   );
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/muse');
+  await openAssistant(page);
   const mic = page.getByRole('button', { name: 'Dictate a message', exact: true });
-  const input = page.getByRole('textbox', { name: 'Message Muse' });
+  const input = page.getByRole('textbox', { name: 'Ask about a shared object' });
   await expect(mic).toBeEnabled();
   await mic.click();
   await expect(page.getByRole('button', { name: 'Stop and transcribe' })).toBeVisible();
@@ -112,23 +104,22 @@ test('Muse microphone transcribes to editable text, reads replies, and keeps typ
   ).toBeGreaterThanOrEqual(2);
 });
 
-test('lab reports API quota failure without substituting an answer', async ({ page }) => {
-  await page.route('**/api/lab/health', (route) =>
-    route.fulfill({ json: { assistant_provider: 'muse', configured: true } }),
-  );
+test('Ask Muse reports quota failure without substituting an answer', async ({ page }) => {
   let calls = 0;
-  await page.route('**/api/lab/chat', (route) => {
+  await page.route('**/api/chat', (route) => {
     calls++;
     return route.fulfill({
       status: 429,
       json: { detail: 'Muse quota or credit limit was reached.' },
     });
   });
-  await page.goto('/muse');
-  await page.getByRole('textbox', { name: 'Message Muse' }).fill('Hello');
+  await openAssistant(page);
+  await page.getByRole('textbox', { name: 'Ask about a shared object' }).fill('Hello');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('quota or credit limit');
-  await expect(page.getByRole('textbox', { name: 'Message Muse' })).toHaveValue('Hello');
+  await expect(page.getByRole('textbox', { name: 'Ask about a shared object' })).toHaveValue(
+    'Hello',
+  );
   expect(calls).toBe(1);
   await expect(page.locator('.assistant-message-assistant')).toHaveCount(0);
 });

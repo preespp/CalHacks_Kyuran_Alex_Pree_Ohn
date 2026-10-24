@@ -24,7 +24,7 @@ With the default private access mode and no server token, the API keeps selectab
 
 A browser refresh or frontend restart alone does not reset the backend's user list. The development server's Python auto-reload also starts a new backend process and therefore resets temporary users. Use one backend process in this mode; multiple processes would have separate temporary directories of users.
 
-This resets **selectable users and their ability to use old sessions**, not the image store, object records, or report history. New object observations do not store contributor identities, and shared-memory API results omit actor IDs/names. Older SQLite rows may still contain legacy actor values; this change does not erase that historical data. We do not delete your teammate's images or existing household history. The independent `/muse` lab does not load this user directory or connect to these stores.
+This resets **selectable users and their ability to use old sessions**, not the image store, object records, or report history. New object observations do not store contributor identities, and shared-memory API results omit actor IDs/names. Older SQLite rows may still contain legacy actor values; this change does not erase that historical data. We do not delete your teammate's images or existing household history.
 
 To force this temporary behavior even while other database settings are present:
 

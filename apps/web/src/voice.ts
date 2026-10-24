@@ -244,7 +244,7 @@ export function useVoiceInput(
           : name === 'NotReadableError'
             ? 'The microphone is busy or unavailable. Check system audio settings and try again.'
             : name === 'NotAllowedError' || name === 'SecurityError'
-              ? 'Microphone permission denied. Allow microphone access on localhost/HTTPS, or type your question.'
+              ? 'Microphone permission denied. Allow microphone access in your browser, or type your question.'
               : 'Microphone unavailable or permission denied. Check microphone permissions and browser audio support, or type your question.',
       );
     }

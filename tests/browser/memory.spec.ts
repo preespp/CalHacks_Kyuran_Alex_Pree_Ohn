@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { blockExternalFonts, expect, test } from './fixtures';
 import { joinAsGuest } from './guest-helpers';
 
 test('search, evidence, and a report shared between two browser sessions', async ({
@@ -31,6 +31,7 @@ test('search, evidence, and a report shared between two browser sessions', async
 
   const secondContext = await browser.newContext();
   const second = await secondContext.newPage();
+  await blockExternalFonts(second);
   await second.goto('/');
   await joinAsGuest(second, 'Alex');
   await second.getByRole('textbox', { name: 'Search objects' }).fill('HDMI adapter');
@@ -60,7 +61,7 @@ test('mobile layout and camera preview remain available without cloud credential
   await page.screenshot({ path: 'test-results/mobile.png', fullPage: true });
   await page.getByRole('button', { name: 'Scan room' }).click();
   await expect(
-    page.getByText('Shared-memory scanning needs Gemini vision', { exact: true }),
+    page.getByText('Remembering new items isn’t available yet', { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Start camera preview', exact: true }),

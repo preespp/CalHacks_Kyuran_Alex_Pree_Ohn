@@ -239,6 +239,7 @@ depth_preview_*
 viewer_3d_*
 *.ply
 *.mp4
+!restroom.mp4
 *.zip
 objects_memory_*.json
 output_memory_*.json

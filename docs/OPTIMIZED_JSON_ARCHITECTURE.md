@@ -158,3 +158,46 @@ print(answer)
 > - **Nearby Objects**:  
 >   • To the right of the dustpan  
 >   • To the right of the mop  
+
+---
+
+## 6. Machine Learning Models & Pipeline Specifications
+
+The video and spatial memory pipeline combines local on-device neural models with remote asynchronous vision LLMs to achieve sub-200ms real-time throughput:
+
+### 1. Semantic Object Detection & Description: Google Gemini
+- **Model ID**: `gemini-3.5-flash-lite` (configured in `.env` via `GEMINI_MODEL`)
+- **Type**: Multimodal Vision-Language Model (VLM)
+- **Role**: Open-vocabulary 2D bounding box detection (`[ymin, xmin, ymax, xmax]`), natural language appearance descriptions, and room context interpretation.
+- **Execution Mode**: Asynchronous background API call on keyframes (~1.5s non-blocking).
+
+### 2. Metric Distance & Depth Estimation: Depth Anything V2 Small
+- **Model ID**: [`depth-anything/Depth-Anything-V2-Small-hf`](https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf)
+- **Architecture**: Monocular Dense Depth Estimation Transformer
+- **Role**: Computes dense per-pixel relative depth maps and samples median depth for each bounding box to derive metric distance in meters (0.5m – 3.5m) and proximity rankings.
+- **Execution Mode**: Local on-device PyTorch model running on Apple Silicon Metal Performance Shaders (`torch.device("mps")`), CUDA, or CPU fallback (~130–145 ms).
+
+### 3. Visual Crop Embedding & Identity Resolution: Google SigLIP
+- **Model ID**: [`google/siglip-base-patch16-224`](https://huggingface.co/google/siglip-base-patch16-224)
+- **Architecture**: Vision Transformer (ViT) patch16 / 224x224
+- **Role**: Extracts L2-normalized 768-dimensional feature embedding vectors for object crops. Used in two-stage cosine similarity matching (`threshold >= 0.75`) to track objects across camera angles and avoid duplicate IDs.
+- **Execution Mode**: Local on-device Hugging Face model running on MPS (~38 ms per crop).
+
+### 4. Fast Inter-Frame Tracking: OpenCV Normalized Cross-Correlation (NCC)
+- **Method**: `cv2.matchTemplate(..., cv2.TM_CCOEFF_NORMED)`
+- **Role**: High-speed local region tracking between keyframes to update active bounding boxes without issuing network requests.
+- **Execution Mode**: Synchronous local CPU (~10 ms).
+
+---
+
+## 7. Sample Video & Quickstart for Teammates
+
+The sample video [`restroom.mp4`](file:///Users/choionyu/Desktop/Cal_hacks_13.0/restroom.mp4) (8.1s, 2.0 MB) is included in the repository root for testing continuous video ingestion:
+
+```bash
+# Test real-time 2 FPS stream ingestion on the sample video:
+.venv/bin/python test_json_only.py restroom.mp4 --room Restroom
+
+# Or test directly with the dedicated video stream runner:
+.venv/bin/python test_video_stream.py
+```  

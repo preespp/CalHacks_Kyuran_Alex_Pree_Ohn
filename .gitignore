@@ -230,3 +230,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Test outputs
+annotated_*
+sample_test_scene.jpg
+depth_test_*
+depth_preview_*
+viewer_3d_*
+*.ply
+*.mp4
+!restroom.mp4
+*.zip
+objects_memory_*.json
+output_memory_*.json
+panorama_*.jpg
+panorama_result.jpg
+images2

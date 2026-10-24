@@ -205,6 +205,18 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# JavaScript, local data, credentials, and browser-test artifacts
+node_modules/
+.data/
+.env.*
+!.env.example
+!**/.env.example
+*.tsbuildinfo
+playwright-report/
+test-results/
+.DS_Store
+spacetime.local.json
+
 # Ruff stuff:
 .ruff_cache/
 

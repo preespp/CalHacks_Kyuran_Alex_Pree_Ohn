@@ -1,0 +1,26 @@
+{
+  "name": "commonplace",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "spacetimedb"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @commonplace/web",
+    "build": "npm run build --workspace @commonplace/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check": "npm run typecheck && npm run build",
+    "test:module": "vitest run --root spacetimedb --config vitest.config.ts",
+    "test:browser": "playwright test",
+    "format": "prettier --write apps/web spacetimedb tests/browser playwright.config.ts README.md docs contracts demo/README.md services/worker/README.md"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "prettier": "^3.9.10",
+    "vitest": "^4.1.12"
+  }
+}

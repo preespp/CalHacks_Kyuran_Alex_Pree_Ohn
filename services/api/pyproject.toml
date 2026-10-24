@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "commonplace-api"
+version = "0.1.0"
+description = "Evidence-backed shared object memory for the Commonplace hackathon MVP"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "pydantic>=2.10,<3",
+  "python-dotenv>=1.0,<2",
+  "python-multipart>=0.0.20,<1",
+  "pillow>=11,<13",
+  "httpx>=0.28,<1",
+]
+
+[project.optional-dependencies]
+azure = ["azure-storage-blob>=12.24,<13", "azure-identity>=1.20,<2"]
+dev = ["pytest>=8.3,<10"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["commonplace_api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

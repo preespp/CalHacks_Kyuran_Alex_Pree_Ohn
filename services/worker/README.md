@@ -1,6 +1,6 @@
 # Vision worker milestone
 
-The first scaffold processes real captures in `services/api/commonplace_api/main.py` during the request. `vision.py` is the reusable provider adapter. This directory documents the extraction boundary; it does not contain a fake running worker.
+Live camera ingestion now feeds `commonplace_api/camera_jobs.py`, a bounded in-process backend worker with one active inference and one latest pending frame per stream. It does not survive process restarts or provide distributed leasing. The legacy `/api/captures` endpoint still runs inference within its request. `vision.py` remains the provider adapter. This directory documents the later durable-worker boundary. See [the live assistance contract](../../docs/ASSISTANCE_SESSION.md).
 
 When introducing the worker:
 

@@ -4,13 +4,13 @@ import {
   ArrowUpRight,
   Check,
   Clock3,
+  Camera,
   DoorOpen,
   House,
   History,
   Leaf,
   LoaderCircle,
   MapPin,
-  Plus,
   Search,
   Sparkles,
   Users,
@@ -21,12 +21,13 @@ import CapturePanel from './components/CapturePanel';
 import EvidenceImage from './components/EvidenceImage';
 import Modal from './components/Modal';
 import AssistantPanel from './components/AssistantPanel';
+import GuestEntry from './components/GuestEntry';
 import HouseholdLayout, { type HouseholdTab } from './components/HouseholdLayout';
-import type { Health, MemoryObject, Observation, Profile, Session } from './types';
+import type { Health, MemoryObject, Observation, Session } from './types';
 
 function loadSession(): Session | null {
   try {
-    const value = JSON.parse(sessionStorage.getItem('commonplace-session') ?? 'null');
+    const value = JSON.parse(sessionStorage.getItem('commonplace-guest-session') ?? 'null');
     return value?.token && value?.member ? value : null;
   } catch {
     return null;
@@ -38,7 +39,7 @@ function sourceName(source: Observation['source']) {
     ? 'Sample illustration'
     : source === 'gemini'
       ? 'Camera observation'
-      : 'Member reported';
+      : 'Location report';
 }
 
 export default function App() {
@@ -50,11 +51,36 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [room, setRoom] = useState('');
   const [tab, setTab] = useState<HouseholdTab>(() => {
+    if (window.location.pathname.replace(/\/$/, '') === '/camera') return 'camera';
     const view = new URLSearchParams(window.location.search).get('view');
     return view === 'assistant' || view === 'activity' ? view : 'memory';
   });
+  useEffect(() => {
+    const restore = () => {
+      const view = new URLSearchParams(window.location.search).get('view');
+      setTab(
+        window.location.pathname.replace(/\/$/, '') === '/camera'
+          ? 'camera'
+          : view === 'assistant' || view === 'activity'
+            ? view
+            : 'memory',
+      );
+    };
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+
+  function navigate(next: HouseholdTab) {
+    setTab(next);
+    window.history.pushState(
+      {},
+      '',
+      next === 'camera' ? '/camera' : next === 'memory' ? '/' : `/?view=${next}`,
+    );
+  }
+
   const [selected, setSelected] = useState<MemoryObject | null>(null);
-  const [modal, setModal] = useState<'capture' | 'household' | 'about' | null>(null);
+  const [modal, setModal] = useState<'household' | 'about' | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
@@ -70,35 +96,6 @@ export default function App() {
     const timer = setTimeout(() => setToast(''), 4500);
     return () => clearTimeout(timer);
   }, [toast]);
-  useEffect(() => {
-    if (session) return;
-    let cancelled = false;
-    api<Session>('/api/demo/session', undefined, {
-      method: 'POST',
-      body: JSON.stringify({ profile: 'pree' }),
-    })
-      .then((value) => {
-        if (!cancelled) {
-          sessionStorage.setItem('commonplace-session', JSON.stringify(value));
-          setSession(value);
-          setError('');
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setError(
-            error instanceof ApiError && error.status === 404
-              ? 'The household API is unavailable on this server. Muse chat can run independently.'
-              : error.message,
-          );
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [session, revision]);
-
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
@@ -121,6 +118,9 @@ export default function App() {
         ]);
         if (!cancelled) {
           setItems(memory.objects);
+          setSelected((current) =>
+            current ? (memory.objects.find((item) => item.id === current.id) ?? current) : null,
+          );
           setEvents(activity.events);
           setHealth(status);
           setError('');
@@ -130,14 +130,14 @@ export default function App() {
         if (!cancelled) {
           setError(
             error instanceof ApiError && error.status === 404
-              ? 'The household API is unavailable on this server. Muse chat can run independently.'
+              ? 'Your household is unavailable right now. Please try again shortly.'
               : error instanceof Error
                 ? error.message
                 : 'Could not load household memory.',
           );
           setLoading(false);
           if (error instanceof ApiError && error.status === 401) {
-            sessionStorage.removeItem('commonplace-session');
+            sessionStorage.removeItem('commonplace-guest-session');
             setSession(null);
           }
         }
@@ -156,35 +156,62 @@ export default function App() {
     };
   }, [session, search, room, revision]);
 
-  async function changeProfile(profile: Profile) {
+  async function joinGuest(name: string, userId?: string) {
     setSwitching(true);
     try {
-      const next = await api<Session>('/api/demo/session', undefined, {
+      const next = await api<Session>('/api/guest/session', session?.token, {
         method: 'POST',
-        body: JSON.stringify({ profile }),
+        body: JSON.stringify(userId ? { user_id: userId } : { name }),
       });
-      sessionStorage.setItem('commonplace-session', JSON.stringify(next));
-      setSession(next);
+      sessionStorage.setItem('commonplace-guest-session', JSON.stringify(next));
+      setItems([]);
+      setEvents([]);
+      setHealth(null);
       setSelected(null);
+      setQuery('');
+      setRoom('');
+      setLoading(true);
+      setSession(next);
+      setModal(null);
       setError('');
-      setToast(`Now viewing as ${next.member.name}`);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Could not switch profile.');
+      setToast(`Welcome, ${next.member.name}`);
     } finally {
       setSwitching(false);
     }
   }
 
-  function saved(message: string) {
-    setRevision((value) => value + 1);
-    setToast(message);
+  async function leaveGuest() {
+    if (!session || switching) return;
+    setSwitching(true);
+    try {
+      await api<void>('/api/guest/session', session.token, { method: 'DELETE' });
+    } catch (failure) {
+      if (!(failure instanceof ApiError && failure.status === 401)) {
+        setError(
+          failure instanceof Error ? failure.message : 'Could not leave the session. Try again.',
+        );
+        setSwitching(false);
+        setModal(null);
+        return;
+      }
+    }
+    sessionStorage.removeItem('commonplace-guest-session');
+    setSession(null);
+    setItems([]);
+    setEvents([]);
+    setHealth(null);
+    setSelected(null);
+    setModal(null);
+    setError('');
+    setToast('You left the guest session.');
+    setSwitching(false);
   }
 
   return (
     <>
       <HouseholdLayout
         tab={tab}
-        onTab={setTab}
+        onTab={navigate}
         onHousehold={() => setModal('household')}
         onAbout={() => setModal('about')}
         memberName={session?.member.name}
@@ -198,37 +225,44 @@ export default function App() {
             <h1>
               {tab === 'memory'
                 ? 'A home that remembers.'
-                : tab === 'assistant'
-                  ? 'Just ask your household.'
-                  : 'Little updates. Shared.'}
+                : tab === 'camera'
+                  ? 'A view into our home.'
+                  : tab === 'assistant'
+                    ? 'Just ask your household.'
+                    : 'Little updates. Shared.'}
             </h1>
             <p>
               {tab === 'memory'
                 ? 'For the “where did we put that?” moments.'
-                : tab === 'assistant'
-                  ? 'Find the little things, with Muse and shared evidence.'
-                  : 'The things your household has remembered along the way.'}
+                : tab === 'camera'
+                  ? 'Look around your room and remember where things are.'
+                  : tab === 'assistant'
+                    ? 'Find the little things, with Muse and shared evidence.'
+                    : 'The things your household has remembered along the way.'}
             </p>
           </div>
-          <button
-            className="primary-button"
-            onClick={() => setModal('capture')}
-            disabled={!session}
-          >
-            <Plus size={18} />
-            Remember something
-          </button>
+          {tab !== 'camera' && (
+            <button
+              className="primary-button"
+              onClick={() => navigate('camera')}
+              disabled={!session}
+            >
+              <Camera size={18} />
+              Scan room
+            </button>
+          )}
         </div>
 
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
             <button onClick={() => setRevision((value) => value + 1)}>Retry</button>
-            <a href="/muse">Open Muse chat</a>
           </div>
         )}
 
-        {tab === 'memory' ? (
+        {!session ? (
+          <GuestEntry onJoin={joinGuest} onSelect={(id) => joinGuest('', id)} />
+        ) : tab === 'memory' ? (
           <>
             <section className="search-card" aria-label="Search household memory">
               <div className="search-card-copy">
@@ -334,13 +368,7 @@ export default function App() {
                         </p>
                         <p className="object-location">{item.latest.location}</p>
                         <div className="card-footer">
-                          <span className={`avatar avatar-${item.latest.actor_name.toLowerCase()}`}>
-                            {item.latest.actor_name[0]}
-                          </span>
-                          <span>
-                            {item.latest.actor_name}{' '}
-                            {item.latest.source === 'reported' ? 'reported' : 'remembered'}
-                          </span>
+                          <span>{sourceName(item.latest.source)}</span>
                           <span className="card-time">
                             <Clock3 size={11} />
                             {timeAgo(item.latest.observed_at)}
@@ -374,21 +402,12 @@ export default function App() {
               <span>Shared with care. Remembered together.</span>
             </div>
           </>
-        ) : tab === 'assistant' ? (
-          session && (
-            <AssistantPanel
-              key={session.token}
-              token={session.token}
-              health={health}
-              onSelect={setSelected}
-            />
-          )
-        ) : (
+        ) : tab === 'camera' || tab === 'assistant' ? null : (
           <section className="activity-section">
             <div className="section-heading">
               <div>
                 <h2>Our household timeline</h2>
-                <p>Photo observations and member reports, kept as separate evidence.</p>
+                <p>Camera observations and location history, shared with your household.</p>
               </div>
             </div>
             <Activity
@@ -406,17 +425,41 @@ export default function App() {
           </section>
         )}
 
+        {session && health && (
+          <div
+            className={`persistent-media ${tab !== 'camera' && tab !== 'assistant' ? 'assistance-dock' : ''}`}
+          >
+            <section
+              className={`camera-page ${tab === 'camera' ? '' : 'camera-summary'}`}
+              aria-label="Household camera"
+            >
+              <CapturePanel
+                key={session.token}
+                token={session.token}
+                health={health}
+                compact={tab !== 'camera'}
+                onSaved={() => setRevision((value) => value + 1)}
+              />
+            </section>
+            <AssistantPanel
+              key={session.token}
+              token={session.token}
+              health={health}
+              compact={tab !== 'assistant'}
+              onSelect={setSelected}
+              onOpen={() => navigate('assistant')}
+            />
+          </div>
+        )}
+
         <footer className="app-footer">
           <span className="footer-brand">
             <House size={14} />
             commonplace.
           </span>
-          <span>
-            {health?.vision_provider === 'gemini' ? 'Gemini photo analysis' : 'Sample data'} ·
-            Shared updates every 5 seconds
-          </span>
+          <span>© 2026 Commonplace · Built at Cal Hacks</span>
           <button onClick={() => setModal('about')}>
-            Hackathon starter <ArrowUpRight size={12} />
+            How it works <ArrowUpRight size={12} />
           </button>
         </footer>
       </HouseholdLayout>
@@ -427,58 +470,28 @@ export default function App() {
           {toast}
         </div>
       )}
-      {modal === 'capture' && session && (
-        <Modal title="Remember a little more" onClose={() => setModal(null)}>
-          <CapturePanel
-            token={session.token}
-            health={health}
-            onSaved={() => {
-              setModal(null);
-              setQuery('');
-              setRoom('');
-              setTab('memory');
-              saved('A new observation was added to our memory.');
-            }}
-          />
-        </Modal>
-      )}
       {modal === 'household' && (
         <Modal title="Our little home" onClose={() => setModal(null)}>
-          <p className="muted">Three people. One place to remember together.</p>
-          <div className="notice">
-            <strong>Demo profiles</strong>
-            <p>
-              Choose a person to try the shared-memory flow. These are development identities, not
-              real sign-in accounts.
+          {session && (
+            <p className="muted">
+              You joined as <strong>{session.member.name}</strong>.
             </p>
-          </div>
-          <div className="member-list">
-            {(['alex', 'pree', 'kyuran'] as Profile[]).map((profile) => (
-              <button
-                key={profile}
-                disabled={switching}
-                className="member-row"
-                aria-label={`View as ${profile[0].toUpperCase() + profile.slice(1)}`}
-                aria-pressed={session?.member.id === profile}
-                onClick={() => void changeProfile(profile)}
-              >
-                <span className={`avatar avatar-${profile}`}>{profile[0].toUpperCase()}</span>
-                <span>
-                  <strong>{profile[0].toUpperCase() + profile.slice(1)}</strong>
-                  <small>
-                    {session?.member.id === profile
-                      ? 'You are viewing as this person'
-                      : 'Switch to this demo profile'}
-                  </small>
-                </span>
-                {session?.member.id === profile && <Check size={18} />}
-              </button>
-            ))}
-          </div>
-          <p className="fine-print">
-            Open this app in a second browser tab or on another device using the same backend.
-            Choose another profile and try updating an item's location.
-          </p>
+          )}
+          <GuestEntry
+            onJoin={joinGuest}
+            onSelect={(id) => joinGuest('', id)}
+            currentUserId={session?.member.id}
+            switching={!!session}
+          />
+          {session && (
+            <button
+              className="secondary-button"
+              disabled={switching}
+              onClick={() => void leaveGuest()}
+            >
+              Leave guest session
+            </button>
+          )}
         </Modal>
       )}
       {modal === 'about' && (
@@ -487,22 +500,22 @@ export default function App() {
             <div>
               <span>01</span>
               <p>
-                <strong>Remember a scene.</strong> Take a deliberate photo of a shared surface.
-                Gemini can describe the clearly visible objects.
+                <strong>Let your home remember.</strong> Point the camera around a room to remember
+                visible objects and where they were last seen.
               </p>
             </div>
             <div>
               <span>02</span>
               <p>
                 <strong>Find the little things.</strong> Search for an object and see its last-seen
-                evidence, location, and contributor.
+                image evidence, location, and recorded time.
               </p>
             </div>
             <div>
               <span>03</span>
               <p>
-                <strong>Keep each other in the loop.</strong> Report when you move or find
-                something. Everyone can see the update.
+                <strong>Share the same memory.</strong> Everyone can ask about the latest camera
+                observations, without tracking who placed an item.
               </p>
             </div>
           </div>
@@ -517,14 +530,7 @@ export default function App() {
       )}
       {selected && session && (
         <Modal title={selected.label} wide onClose={() => setSelected(null)}>
-          <ObjectDetail
-            item={selected}
-            token={session.token}
-            onSaved={(updated) => {
-              setSelected(updated);
-              saved('Your household can see the update.');
-            }}
-          />
+          <ObjectDetail item={selected} token={session.token} />
         </Modal>
       )}
     </>
@@ -537,19 +543,12 @@ function Activity({ events, onSelect }: { events: Observation[]; onSelect: (id: 
       {events.length ? (
         events.map((event) => (
           <button key={event.id} className="timeline-row" onClick={() => onSelect(event.object_id)}>
-            <span className={`avatar avatar-${event.actor_name.toLowerCase()}`}>
-              {event.actor_name[0]}
+            <span className="avatar">
+              <Camera size={18} />
             </span>
             <span>
-              <strong>{event.actor_name}</strong>{' '}
-              {event.kind === 'seen'
-                ? 'remembered'
-                : event.kind === 'moved'
-                  ? 'moved'
-                  : event.kind === 'found'
-                    ? 'found'
-                    : 'corrected'}{' '}
-              <strong>{event.label}</strong>
+              <strong>{event.label}</strong>{' '}
+              {event.kind === 'seen' ? 'last seen' : 'location updated'}
               <small>
                 {event.room} · {event.location}
               </small>
@@ -568,50 +567,25 @@ function Activity({ events, onSelect }: { events: Observation[]; onSelect: (id: 
   );
 }
 
-function ObjectDetail({
-  item,
-  token,
-  onSaved,
-}: {
-  item: MemoryObject;
-  token: string;
-  onSaved: (item: MemoryObject) => void;
-}) {
+function ObjectDetail({ item, token }: { item: MemoryObject; token: string }) {
   const [history, setHistory] = useState<Observation[]>([]);
-  const [room, setRoom] = useState(item.latest.room);
-  const [location, setLocation] = useState(item.latest.location);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
-    let cancelled = false;
-    api<{ observations: Observation[] }>(`/api/objects/${item.id}/history`, token)
+    const request = new AbortController();
+    api<{ observations: Observation[] }>(`/api/objects/${item.id}/history`, token, {
+      signal: request.signal,
+    })
       .then((value) => {
-        if (!cancelled) setHistory(value.observations);
+        if (!request.signal.aborted) {
+          setHistory(value.observations);
+          setError('');
+        }
       })
-      .catch((error) => {
-        if (!cancelled) setError(error.message);
+      .catch((failure) => {
+        if (!request.signal.aborted) setError(failure.message);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => request.abort();
   }, [item.id, item.latest.id, token]);
-  async function report(kind: 'moved' | 'found') {
-    setBusy(true);
-    setError('');
-    try {
-      const result = await api<{ observations: Observation[] }>(
-        `/api/objects/${item.id}/notes`,
-        token,
-        { method: 'POST', body: JSON.stringify({ room, location, kind }) },
-      );
-      setHistory(result.observations);
-      onSaved({ ...item, latest: result.observations[0] });
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Could not save the update.');
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
     <div className="object-detail">
       <div className="detail-evidence">
@@ -624,71 +598,23 @@ function ObjectDetail({
         </div>
         {item.latest.source === 'reported' && (
           <p className="fine-print">
-            This earlier image shows the previous sighting. The latest location below was reported
-            by a household member.
+            This earlier image shows the previous sighting. The latest location is a separate
+            location report.
           </p>
         )}
         <p className="muted">{item.appearance}</p>
       </div>
       <div className="detail-content">
-        <span className="mini-label">
-          {item.latest.source === 'reported' ? 'LATEST REPORTED LOCATION' : 'LAST SEEN'}
-        </span>
+        <span className="mini-label">LAST RECORDED LOCATION</span>
         <h3>{item.latest.room}</h3>
         <p>{item.latest.location}</p>
         <p className="fine-print">
-          {item.latest.actor_name} · {new Date(item.latest.observed_at).toLocaleString()}
+          {sourceName(item.latest.source)} · {new Date(item.latest.observed_at).toLocaleString()}
         </p>
-        <hr />
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void report('moved');
-          }}
-        >
-          <h4>Keep everyone in the loop</h4>
-          <label className="field-label">
-            Room
-            <select value={room} onChange={(event) => setRoom(event.target.value)}>
-              {[
-                'Living room',
-                'Kitchen',
-                'Bedroom',
-                'Office',
-                'Entryway',
-                ...(!['Living room', 'Kitchen', 'Bedroom', 'Office', 'Entryway'].includes(room)
-                  ? [room]
-                  : []),
-              ].map((value) => (
-                <option key={value}>{value}</option>
-              ))}
-            </select>
-          </label>
-          <label className="field-label">
-            Where is it now?
-            <input
-              required
-              maxLength={300}
-              value={location}
-              onChange={(event) => setLocation(event.target.value)}
-            />
-          </label>
-          <div className="detail-actions">
-            <button className="primary-button" disabled={busy || !location.trim()} type="submit">
-              {busy ? <LoaderCircle className="spin" size={16} /> : <MapPin size={16} />}Update
-              location
-            </button>
-            <button
-              className="secondary-button"
-              type="button"
-              disabled={busy || !location.trim()}
-              onClick={() => void report('found')}
-            >
-              <Check size={16} />
-              Found it
-            </button>
-          </div>
-        </form>
+        <p className="fine-print">
+          Start a room scan to update visible objects automatically. This saved observation does not
+          confirm that the object is still there.
+        </p>
         {error && (
           <p className="error" role="alert">
             {error}
@@ -701,7 +627,7 @@ function ObjectDetail({
               <strong>{event.room}</strong>
               <span>{event.location}</span>
               <small>
-                {sourceName(event.source)} · {event.actor_name} · {timeAgo(event.observed_at)}
+                {sourceName(event.source)} · {timeAgo(event.observed_at)}
               </small>
             </div>
           ))}

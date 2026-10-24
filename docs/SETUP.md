@@ -22,7 +22,7 @@ Install SpacetimeDB with its [official installer](https://spacetimedb.com/instal
 4. Test one real demo photo using an image-capable model with structured-output support.
 5. For computer vision, set `VISION_PROVIDER=gemini`, `GEMINI_VISION_API_KEY`, and `GEMINI_MODEL` in the root `.env`, then restart the API.
 
-The user-facing assistant now uses **Meta Muse**, with separate `MODEL_API_KEY` / `META_MODEL` settings. Gemini vision does not use that key. To work on the assistant without the database or vision team, follow [Muse UI setup](MUSE_TESTING.md) and run `make muse-api` + `make muse-web` at `/muse`. All secrets stay in the repository-root `.env`, never `VITE_*` or frontend source. The old Gemini assistant and standalone script remain optional compatibility experiments; they are not part of the Muse flow.
+The user-facing assistant now uses **Meta Muse**, with separate `MODEL_API_KEY` / `META_MODEL` settings. Gemini vision does not use that key. To test the assistant with local household memory and no hosted database or vision service, follow [Muse UI setup](MUSE_TESTING.md), run `make api` + `make web`, and choose **Ask Muse**. All secrets stay in the repository-root `.env`, never `VITE_*` or frontend source. The old Gemini assistant and standalone script remain optional compatibility experiments; they are not part of the Muse flow.
 
 The API uses the official REST `generateContent` endpoint. Account availability, rate limits, and supported models can change; choose the model from your own project rather than copying a guessed model ID. See [API key setup](https://ai.google.dev/gemini-api/docs/api-key) and [image understanding](https://ai.google.dev/gemini-api/docs/image-understanding).
 
@@ -50,11 +50,11 @@ AZURE_STORAGE_ACCOUNT_URL=https://YOUR_ACCOUNT.blob.core.windows.net
 AZURE_STORAGE_CONTAINER=scene-images
 ```
 
-7. Restart the API and capture a real photograph with Gemini enabled. The API reads images on behalf of the authenticated member; the browser receives neither a storage key nor public blob access.
+7. Restart the API, enable Gemini vision, and use **Scan room → Start scanning** to save camera frames automatically every 3–5 seconds. The API reads images on behalf of the authenticated member; the browser receives neither a storage key nor public blob access.
 
 The container must already exist. Sample illustrations remain repository assets. Keep the same storage provider for existing captures until a migration tool exists. Azure adapters have not been exercised against your account by the scaffold's mock/local tests.
 
-For a future Container Apps deployment, use managed identity for blob access, attach durable storage or complete the SpacetimeDB migration, replace demo authentication, and set backend secrets through the deployment platform. The current startup guard deliberately rejects production mode with demo identities.
+For a future Container Apps deployment, use managed identity for blob access, attach durable storage or complete the SpacetimeDB migration, set `APP_ENV=prototype` for the name-only shared demo, and set backend secrets through the deployment platform. No external login provider is required for this prototype. The `production` environment remains reserved for future verified private accounts.
 
 ## Meta Muse assistant and voice
 
@@ -71,3 +71,7 @@ Muse Voice Transcribe converts audio to text; browser speech synthesis reads the
 Create one shared Figma file for the household, scan, result, and history screens. No Figma API token is needed for ordinary design collaboration. Share the GitHub repository through collaborator invitations.
 
 Choose and register a domain through the hackathon's GoDaddy Registry offer after deployment works and you have checked the offer's eligibility. Tiger Data, Convex, and Vultr are optional later choices, not requirements for running this repository.
+
+## Saved users and test reset
+
+See [saved-user setup](USERS.md). By default, no database setup is needed for the selectable user list: add names and switch users during a run; restarting `make api` resets that temporary list and rejects its old sessions. Use `GUEST_PROFILE_STORE=sqlite` for persistence between local runs, or configure the independent SpacetimeDB profile registry. Image/object memory is a separate store and is not erased by resetting temporary users.

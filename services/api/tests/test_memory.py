@@ -52,7 +52,7 @@ def test_update_is_shared_and_does_not_fabricate_new_photo(client):
                            json={"room": "Kitchen", "location": "In the top drawer", "kind": "moved"})
     assert response.status_code == 201
     item = client.get("/api/objects?q=adapter", headers=pree).json()["objects"][0]
-    assert item["latest"]["actor_name"] == "Alex"
+    assert "actor_name" not in item["latest"] and "actor_id" not in item["latest"]
     assert item["latest"]["source"] == "reported"
     assert item["latest"]["image_url"] is None
     assert item["latest"]["bbox"] is None

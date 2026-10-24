@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import hashlib
 import re
+import time
 from typing import Optional
 from uuid import uuid4
 
@@ -11,13 +12,17 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.concurrency import run_in_threadpool
 
 from .config import ROOT, Settings
+from .camera import CameraFrames
+from .camera_jobs import CameraJobs
 from .assistant import AssistantError, answer_question
 from .memory import search_household_memory
+from .guest_profiles import create_profiles, ProfileError
+from .frame_sink import create_frame_sink, FrameUploadError
 from .muse import memory_reply
 from .voice import transcribe
 from .models import (
-    ActivityResponse, CaptureResponse, ChatRequest, ChatResponse, ConnectorSearchResponse, DemoSessionRequest,
-    Detection, HistoryResponse, MemberResponse, NoteRequest, SearchResponse, SessionResponse, TranscriptResponse,
+    ActivityResponse, CameraAnalysisResponse, CameraFramesResponse, CaptureResponse, ChatRequest, ChatResponse, ConnectorSearchResponse, DemoSessionRequest,
+    Detection, GuestSessionRequest, HistoryResponse, MemberResponse, NoteRequest, SearchResponse, SessionResponse, TranscriptResponse,
 )
 from .storage import create_storage
 from .store import Store, now
@@ -31,33 +36,81 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings.validate()
     store = Store(settings.data_dir / "memory.sqlite3")
     store.seed()
+    profiles = create_profiles(settings, store)
     storage = create_storage(settings)
+    camera = CameraFrames()
+    frame_sink = create_frame_sink(settings)
+
+    async def analyze_frame(household, scan_id, normalized, room, captured_at):
+        detections = await detect(settings, normalized, room)
+        image_key = uuid4().hex + ".jpg"
+        if detections:
+            await run_in_threadpool(storage.put, image_key, normalized)
+        return await run_in_threadpool(
+            store.save_capture, {"household_id": household}, uuid4().hex,
+            hashlib.sha256(normalized).hexdigest(), image_key, room,
+            detections, "gemini", captured_at, scan_id,
+        )
+
+    camera_jobs = CameraJobs(analyze_frame)
 
     @asynccontextmanager
     async def lifespan(app):
-        yield
+        try:
+            yield
+        finally:
+            await camera_jobs.close()
 
     app = FastAPI(title="Commonplace API", version="0.1.0", lifespan=lifespan,
-                  description="Local hackathon starter. Demo identities are not production authentication.")
+                  description="Name-only guest prototype. Guests share one demo household; names are unverified.")
     app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
-                       allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
+                       allow_methods=["GET", "POST", "DELETE"], allow_headers=["Authorization", "Content-Type"])
 
     def member(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer)):
         if credentials is None or credentials.scheme.lower() != "bearer":
-            raise HTTPException(401, "Choose a demo profile to start", headers={"WWW-Authenticate": "Bearer"})
+            raise HTTPException(401, "Enter your name to join as a guest", headers={"WWW-Authenticate": "Bearer"})
         result = store.member_for_token(credentials.credentials)
+        if result and result["id"].startswith("guest-") and profiles.provider == "local" and not profiles.get(result["id"]):
+            result = None
         if result is None:
-            raise HTTPException(401, "Session expired. Choose your profile again.", headers={"WWW-Authenticate": "Bearer"})
+            raise HTTPException(401, "Session expired. Enter your name again.", headers={"WWW-Authenticate": "Bearer"})
         return result
 
     @app.get("/api/health")
     def health():
         return {"status": "ok", "vision_provider": settings.vision_provider, "storage_provider": settings.storage_provider,
                 "assistant_provider": settings.assistant_provider,
-                "memory_provider": "sqlite", "auth_mode": "demo", "sync_mode": "polling"}
+                "memory_provider": "sqlite", "auth_mode": "guest", "sync_mode": "polling",
+                "guest_profile_store": profiles.provider, "camera_frame_sink": settings.camera_frame_sink}
+
+    @app.get("/api/guest/users")
+    def guest_users():
+        try:
+            return {"users": profiles.list(), "storage": profiles.provider, "notice": profiles.notice}
+        except ProfileError as error:
+            raise HTTPException(503, str(error)) from error
+
+    @app.post("/api/guest/session", response_model=SessionResponse)
+    def guest_session(body: GuestSessionRequest, credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer)):
+        previous = credentials.credentials if credentials and credentials.scheme.lower() == "bearer" else None
+        try:
+            profile = profiles.get(body.user_id) if body.user_id else profiles.create(body.name)
+        except ProfileError as error:
+            raise HTTPException(503, str(error)) from error
+        if not profile:
+            raise HTTPException(404, "This saved user is unavailable. Reload the user list or add a new user.")
+        token = store.session_for_guest_profile(profile, previous)
+        return {"token": token, "member": store.member_for_token(token), "expires_in": 86400}
+
+    @app.delete("/api/guest/session", status_code=204)
+    def leave_guest_session(actor=Depends(member), credentials: HTTPAuthorizationCredentials = Depends(bearer)):
+        store.revoke_session(credentials.credentials)
+        return Response(status_code=204)
 
     @app.post("/api/demo/session", response_model=SessionResponse)
     def demo_session(body: DemoSessionRequest):
+        if settings.app_env != "development":
+            raise HTTPException(404, "Not found")
         token = store.create_session(body.profile)
         return {"token": token, "member": store.member_for_token(token), "expires_in": 86400}
 
@@ -112,6 +165,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def capture(
         image: UploadFile = File(...), room: str = Form(..., min_length=1, max_length=80),
         request_id: str = Form(..., min_length=8, max_length=100), actor=Depends(member),
+        scan_id: Optional[str] = Form(None, min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$"),
     ):
         if settings.vision_provider != "gemini":
             raise HTTPException(409, "Photo analysis needs VISION_PROVIDER=gemini and your Gemini credentials. Use the labeled sample scene to try the demo.")
@@ -121,7 +175,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         await image.close()
         if len(raw) > settings.max_upload_bytes:
             raise HTTPException(413, "Image exceeds the configured upload limit")
-        fingerprint = hashlib.sha256(raw + b"\x00" + room.strip().encode()).hexdigest()
+        fingerprint = hashlib.sha256(raw + b"\x00" + room.strip().encode() + (b"\x00" + scan_id.encode() if scan_id else b"")).hexdigest()
         cached = await run_in_threadpool(store.cached_capture, actor["household_id"], request_id)
         if cached:
             if cached[0] != fingerprint:
@@ -132,6 +186,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except ValueError as error:
             raise HTTPException(422, str(error))
         captured_at = now()  # Receipt time, before inference; later results cannot become newer by finishing late.
+        frame_stats = await run_in_threadpool(camera.observe, actor["household_id"], scan_id, normalized) if scan_id else None
         try:
             detections = await detect(settings, normalized, room.strip())
         except VisionError as error:
@@ -143,10 +198,60 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             except Exception:
                 raise HTTPException(502, "Image could not be stored. No objects were saved.")
         try:
-            return await run_in_threadpool(store.save_capture, actor, request_id, fingerprint, image_key,
-                                           room.strip(), detections, "gemini", captured_at)
+            result = await run_in_threadpool(store.save_capture, actor, request_id, fingerprint, image_key,
+                                            room.strip(), detections, "gemini", captured_at, scan_id)
+            return {**result, "frame_stats": frame_stats}
         except ValueError as error:
             raise HTTPException(409, str(error))
+
+    @app.post("/api/camera/frames", response_model=CameraFramesResponse)
+    async def camera_frame(
+        image: UploadFile = File(...),
+        scan_id: str = Form(..., min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$"),
+        room: str = Form("Living room", min_length=1, max_length=80),
+        memory_enabled: bool = Form(False),
+        analysis_interval: float = Form(5, ge=1, le=30),
+        actor=Depends(member),
+    ):
+        """Fast frame ingestion. Optional backend vision worker samples the latest frame."""
+        if not room.strip():
+            raise HTTPException(422, "Room cannot be blank")
+        if memory_enabled and settings.vision_provider != "gemini":
+            raise HTTPException(409, "Enable Gemini vision to update shared memory. Camera preview remains available.")
+        raw = await image.read(settings.max_upload_bytes + 1)
+        await image.close()
+        if len(raw) > settings.max_upload_bytes:
+            raise HTTPException(413, "Image exceeds the configured upload limit")
+        try:
+            normalized = await run_in_threadpool(normalize_image, raw)
+            captured_at = now()
+            captured_us = time.time_ns() // 1000
+            stats = await run_in_threadpool(camera.observe, actor["household_id"], scan_id, normalized)
+            if frame_sink:
+                quality = stats["quality"]
+                stats["image_upload"] = await frame_sink.put(
+                    actor["household_id"], scan_id, stats["received_frames"], captured_us,
+                    quality["width"], quality["height"], normalized,
+                )
+            if memory_enabled:
+                stats["analysis"] = camera_jobs.offer(actor["household_id"], scan_id, normalized, room.strip(), captured_at, analysis_interval)
+            else:
+                camera_jobs.stop(actor["household_id"], scan_id)
+                stats["analysis"] = camera_jobs.status(actor["household_id"], scan_id)
+            return stats
+        except FrameUploadError as error:
+            raise HTTPException(502, str(error)) from None
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+
+    @app.get("/api/camera/streams/{scan_id}", response_model=CameraAnalysisResponse)
+    async def camera_status(scan_id: str, actor=Depends(member)):
+        return camera_jobs.status(actor["household_id"], scan_id)
+
+    @app.delete("/api/camera/streams/{scan_id}", status_code=204)
+    async def stop_camera(scan_id: str, actor=Depends(member)):
+        camera_jobs.stop(actor["household_id"], scan_id)
+        return Response(status_code=204)
 
     @app.get("/api/connector/search", operation_id="search_household_memory", response_model=ConnectorSearchResponse)
     def connector_search(q: str = Query(..., min_length=1, max_length=200), actor=Depends(member)):

@@ -64,8 +64,8 @@ def create_gateway(
     async def search(q: str = Query(..., min_length=1, max_length=200)):
         """Search this authorized demo household using object-name keywords, color, or aliases.
 
-        This tool only reads memory. Report last-seen/member-reported locations with
-        source, contributor, and time. Label sample illustrations as sample data.
+        This tool only reads memory. Report last-seen/reported locations with
+        source and time, without inferring who placed an item. Label sample illustrations as sample data.
         An empty match list means there is no stored match. Multiple matches require
         clarification. Relative image paths refer to the local app; this gateway
         does not publish private photographs or provide live camera/depth data.

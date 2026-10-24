@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, LoaderCircle, Mic, Send, Sparkles, Square, Volume2 } from 'lucide-react';
 import { api } from '../api';
-import type { ChatMessage, ChatResponse, Health, MemoryObject, PlainChatResponse } from '../types';
+import type { ChatMessage, ChatResponse, Health, MemoryObject } from '../types';
 import { useSpeechOutput, useVoiceInput } from '../voice';
 import { useWakePhrase } from '../wake';
+import { mediaDefault, saveMediaPreference } from '../mediaPreferences';
+
+export const WAKE_GREETING = 'Hi I am Muse how can I help you today with household stuff';
 
 type Turn = ChatMessage & { evidence?: ChatResponse };
 
@@ -11,13 +14,16 @@ export default function AssistantPanel({
   token,
   health,
   onSelect,
-  mode = 'memory',
+  compact = false,
+  onOpen,
 }: {
-  token?: string;
+  token: string;
   health: Pick<Health, 'assistant_provider'> | null;
   onSelect?: (item: MemoryObject) => void;
-  mode?: 'memory' | 'plain';
+  compact?: boolean;
+  onOpen?: () => void;
 }) {
+  const autoAttempted = useRef(false);
   const [messages, setMessages] = useState<Turn[]>([]);
   const [question, setQuestion] = useState('');
   const [pending, setPending] = useState('');
@@ -33,19 +39,15 @@ export default function AssistantPanel({
   const generation = useRef(0);
   const sendRef = useRef<(text: string, voiceTurn?: boolean) => Promise<void>>(async () => {});
   const speech = useSpeechOutput();
-  const voice = useVoiceInput(
-    mode === 'plain' ? '/api/lab/transcribe' : '/api/voice/transcribe',
-    token,
-    (text, automatic) => {
-      setQuestion(text);
-      if (automatic && conversationRef.current) {
-        if (/^(stop|stop listening|stop voice session|cancel)[.!?]*$/i.test(text.trim())) {
-          stopRef.current();
-          void speech.speak('Voice stopped.');
-        } else void sendRef.current(text, true);
-      }
-    },
-  );
+  const voice = useVoiceInput('/api/voice/transcribe', token, (text, automatic) => {
+    setQuestion(text);
+    if (automatic && conversationRef.current) {
+      if (/^(stop|stop listening|stop voice session|cancel)[.!?]*$/i.test(text.trim())) {
+        stopRef.current();
+        void speech.speak('Voice stopped.');
+      } else void sendRef.current(text, true);
+    }
+  });
   const wake = useWakePhrase(
     (command) => {
       void activateWake(command);
@@ -95,7 +97,7 @@ export default function AssistantPanel({
     setConversation(true);
     setReadAloud(true);
     setAcknowledging(true);
-    const outcome = await speech.speak("I'm listening.");
+    const outcome = await speech.speak(WAKE_GREETING);
     if (generation.current !== turn || !conversationRef.current) return;
     if (outcome !== 'ended' || document.hidden) {
       stopConversation();
@@ -162,8 +164,43 @@ export default function AssistantPanel({
 
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
-    if (messages.length || pending || error) end.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [messages, pending, error]);
+    if (!compact && (messages.length || pending || error))
+      end.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [messages, pending, error, compact]);
+
+  const enableWakeRef = useRef(wake.enable);
+  enableWakeRef.current = wake.enable;
+  useEffect(() => {
+    if (
+      !enabled ||
+      name !== 'Muse' ||
+      !wake.supported ||
+      !voice.supported ||
+      !speech.supported ||
+      autoAttempted.current
+    )
+      return;
+    const timer = setTimeout(() => {
+      autoAttempted.current = true;
+      if (mediaDefault('voice')) {
+        setReadAloud(true);
+        enableWakeRef.current();
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [enabled, name, wake.supported, voice.supported, speech.supported]);
+
+  function toggleVoice() {
+    if (wake.enabled || conversation) {
+      saveMediaPreference('voice', false);
+      stopConversation();
+    } else {
+      saveMediaPreference('voice', true);
+      setReadAloud(true);
+      wake.enable();
+      void speech.speak('I’m listening. Say Hello when you need me.');
+    }
+  }
 
   async function send(text = question, voiceTurn = false) {
     const message = text.trim();
@@ -175,18 +212,14 @@ export default function AssistantPanel({
     setPending(message);
     setError('');
     try {
-      const result = await api<ChatResponse | PlainChatResponse>(
-        mode === 'plain' ? '/api/lab/chat' : '/api/chat',
-        token,
-        {
-          method: 'POST',
-          signal: request.signal,
-          body: JSON.stringify({
-            message,
-            history: messages.slice(-8).map(({ role, content }) => ({ role, content })),
-          }),
-        },
-      );
+      const result = await api<ChatResponse>('/api/chat', token, {
+        method: 'POST',
+        signal: request.signal,
+        body: JSON.stringify({
+          message,
+          history: messages.slice(-8).map(({ role, content }) => ({ role, content })),
+        }),
+      });
       if (request.signal.aborted) return;
       setMessages((previous) => [
         ...previous,
@@ -194,7 +227,7 @@ export default function AssistantPanel({
         {
           role: 'assistant',
           content: result.answer,
-          evidence: 'matches' in result ? result : undefined,
+          evidence: result,
         },
       ]);
       setQuestion('');
@@ -227,19 +260,36 @@ export default function AssistantPanel({
 
   return (
     <section
-      className="assistant-panel"
-      aria-label={`${name} ${mode === 'plain' ? 'plain chat' : 'household assistant'}`}
+      className={`assistant-panel ${compact ? 'assistant-compact' : ''}`}
+      aria-label={`${name} household assistant`}
     >
+      <div className="voice-power">
+        <span>
+          <Mic size={17} /> Muse voice {wake.enabled || conversation ? 'on' : 'off'}
+          {acknowledging ? ` · ${WAKE_GREETING}` : wake.listening ? ' · Say Hello' : ''}
+        </span>
+        <button
+          className="secondary-button"
+          aria-pressed={wake.enabled || conversation}
+          disabled={
+            !enabled || name !== 'Muse' || !wake.supported || !voice.supported || !speech.supported
+          }
+          onClick={toggleVoice}
+        >
+          {wake.enabled || conversation ? 'Turn off Muse voice' : 'Turn on Muse voice'}
+        </button>
+        {compact && onOpen && (
+          <button className="secondary-button" onClick={onOpen}>
+            Open chat
+          </button>
+        )}
+      </div>
       <div className="section-heading">
         <div>
           <h2>
             <Sparkles size={20} /> Ask {name}
           </h2>
-          <p>
-            {mode === 'plain'
-              ? 'Type or speak. Chat directly with Muse.'
-              : 'A fresh look at what your household has remembered.'}
-          </p>
+          <p>A fresh look at what your household has remembered.</p>
         </div>
         <button
           className="secondary-button"
@@ -254,9 +304,8 @@ export default function AssistantPanel({
         </button>
       </div>
       <p className="fine-print">
-        {mode === 'plain'
-          ? 'Isolated chat: no database, household memory, camera, or Gemini vision is connected.'
-          : "Answers use shared records and their timestamps. Ask here; report moves and finds from an object's card."}
+        Answers use last-seen locations and timestamps. Start a room scan to update memory
+        automatically.
       </p>
       {!enabled && (
         <div className="notice" role="status">
@@ -265,9 +314,7 @@ export default function AssistantPanel({
           </strong>
           <p>
             {health
-              ? mode === 'plain'
-                ? 'Set MODEL_API_KEY and META_MODEL in the root .env, then restart make muse-api.'
-                : 'You can still search, view evidence, and share location updates in Our memory. See the setup guide to enable chat.'
+              ? 'You can still search for saved items and view their last-seen photos in Our memory.'
               : 'Your saved household memory will remain available.'}
           </p>
         </div>
@@ -282,28 +329,14 @@ export default function AssistantPanel({
         {messages.length === 0 && !pending && (
           <div className="assistant-welcome">
             <Sparkles size={28} />
-            <h3>
-              {mode === 'plain'
-                ? 'A little conversation with Muse.'
-                : 'Someone remembers. Just ask.'}
-            </h3>
-            <p>
-              {mode === 'plain'
-                ? 'Try “Introduce yourself in one sentence.”'
-                : 'Try “Where did we leave the HDMI adapter?”'}
-            </p>
+            <h3>Someone remembers. Just ask.</h3>
+            <p>Try “Where did we leave the HDMI adapter?”</p>
             <button
               className="secondary-button"
               disabled={!enabled}
-              onClick={() =>
-                setQuestion(
-                  mode === 'plain'
-                    ? 'Introduce yourself in one sentence.'
-                    : 'Where did we leave the HDMI adapter?',
-                )
-              }
+              onClick={() => setQuestion('Where did we leave the HDMI adapter?')}
             >
-              {mode === 'plain' ? 'Try a first question' : 'Ask about the adapter'}
+              Ask about the adapter
             </button>
           </div>
         )}
@@ -345,16 +378,16 @@ export default function AssistantPanel({
                     </span>
                     <small>
                       {item.latest.source === 'reported'
-                        ? 'Member reported'
+                        ? 'Location report'
                         : item.latest.source === 'sample'
                           ? 'Sample illustration'
                           : 'Camera observation'}{' '}
-                      · {item.latest.actor_name} ·{' '}
+                      ·{' '}
                       <time dateTime={item.latest.observed_at}>
                         {new Date(item.latest.observed_at).toLocaleString()}
                       </time>
                     </small>
-                    <small>Open evidence and update location</small>
+                    <small>Open saved evidence</small>
                   </button>
                 ))}
                 {message.evidence.total_matches > message.evidence.matches.length && (
@@ -374,8 +407,7 @@ export default function AssistantPanel({
               <p>{pending}</p>
             </article>
             <p className="assistant-pending" role="status">
-              <LoaderCircle className="spin" size={17} />{' '}
-              {mode === 'plain' ? 'Muse is replying…' : 'Checking shared memory…'}
+              <LoaderCircle className="spin" size={17} /> Checking shared memory…
             </p>
           </>
         )}
@@ -394,7 +426,7 @@ export default function AssistantPanel({
         }}
       >
         <label className="field-label" htmlFor="assistant-question">
-          {mode === 'plain' ? 'Message Muse' : 'Ask about a shared object'}
+          Ask about a shared object
         </label>
         <div className="assistant-compose">
           <input
@@ -402,7 +434,7 @@ export default function AssistantPanel({
             value={question}
             maxLength={1000}
             required
-            placeholder={mode === 'plain' ? 'Type a message…' : 'Where is our HDMI adapter?'}
+            placeholder="Where is our HDMI adapter?"
             disabled={!enabled || !!pending || voice.state !== 'idle' || conversation}
             onChange={(event) => setQuestion(event.target.value)}
           />
@@ -490,11 +522,14 @@ export default function AssistantPanel({
               speech.speaking)
           }
           onClick={() => {
-            if (wake.enabled) stopConversation();
-            else {
+            if (wake.enabled) {
+              saveMediaPreference('voice', false);
+              stopConversation();
+            } else {
+              saveMediaPreference('voice', true);
               setReadAloud(true);
               wake.enable();
-              void speech.speak('Wake listening enabled.');
+              void speech.speak('I’m listening. Say Hello when you need me.');
             }
           }}
         >
@@ -503,15 +538,15 @@ export default function AssistantPanel({
         </button>
         <p id="wake-explanation" className="fine-print">
           {wake.supported
-            ? 'Optional: say “Hello”, wait for “I’m listening”, then ask. Keep this page visible. Your browser’s speech service may process wake-listening audio remotely.'
+            ? 'Say “Hello”, wait for Muse’s greeting, then ask your question. Keep Commonplace open while you talk.'
             : 'Hello is unavailable in this browser. Use Talk to Muse, dictation, or typing.'}
         </p>
         <p className="fine-print" role="status" aria-live="polite">
           {wake.enabled
             ? wake.listening
-              ? 'Wake listening is on. Say Hello.'
-              : 'Wake listening is paused during your voice turn or spoken reply.'
-            : 'Wake listening is off.'}
+              ? 'Ready when you are. Say “Hello” to begin.'
+              : 'Muse will listen for “Hello” again after your conversation.'
+            : 'Hands-free listening is off. You can still type or tap Talk to Muse.'}
         </p>
       </div>
       <div className="voice-controls">
@@ -582,9 +617,9 @@ export default function AssistantPanel({
       {!conversation && voice.state !== 'idle' && (
         <p className="fine-print" role="status">
           {voice.state === 'recording'
-            ? 'Recording (up to 30 seconds). Stop to transcribe, review the text, then press Send.'
+            ? 'Recording for up to 30 seconds. Stop when you’re done, review your message, then press Send.'
             : voice.state === 'transcribing'
-              ? 'Sending this recording to Muse Voice Transcribe…'
+              ? 'Turning your words into a message…'
               : 'Waiting for microphone permission…'}
         </p>
       )}
@@ -595,14 +630,14 @@ export default function AssistantPanel({
             : pending
               ? 'Thinking. The microphone is off while Muse replies.'
               : voice.state === 'transcribing'
-                ? 'Transcribing your question…'
+                ? 'Understanding your question…'
                 : 'Listening for your question. Stop the session to type instead.'}
         </p>
       )}
       {!voice.supported && (
         <p className="fine-print">
-          Microphone recording is unavailable here. Use a supported browser on localhost or HTTPS;
-          typing still works.
+          Voice input isn’t available in this browser. You can try another browser; typing still
+          works.
         </p>
       )}
       {(voice.error || speech.error || wake.error) && (
@@ -611,12 +646,17 @@ export default function AssistantPanel({
         </p>
       )}
       <p className="fine-print">
-        {mode === 'plain'
-          ? 'Messages are sent to Meta. This temporary conversation clears when you reload or leave this page.'
-          : `Questions and matching record text are sent to ${name}. Earlier answers are snapshots; ask again for a fresh search. This chat clears when you leave this tab or switch profiles.`}{' '}
-        Microphone audio is sent to Meta for transcription; spoken replies use your browser/device
-        voice.
+        Ask again for the latest saved location. Your chat stays with you across screens and clears
+        when you refresh or switch names.
       </p>
+      <details className="fine-print">
+        <summary>About your voice and shared memory</summary>
+        <p>
+          {`Your questions and matching item details are shared with ${name} to help answer you.`}{' '}
+          Recorded questions are sent to Meta to turn speech into text. Your browser may use an
+          online speech service to listen for “Hello”. Replies play through your device’s voice.
+        </p>
+      </details>
     </section>
   );
 }

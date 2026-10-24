@@ -1,11 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { installVoiceMocks } from './voice-mocks';
+import { chatReply, openAssistant } from './assistant-helpers';
 
 test.beforeEach(async ({ page }) => {
   await installVoiceMocks(page);
-  await page.route('**/api/lab/health', (route) =>
-    route.fulfill({ json: { assistant_provider: 'muse', configured: true } }),
-  );
 });
 
 test('pause sends automatically, replies aloud, and listens for a fresh follow-up', async ({
@@ -14,17 +12,17 @@ test('pause sends automatically, replies aloud, and listens for a fresh follow-u
   await page.clock.install();
   const messages: { message: string; history: unknown[] }[] = [];
   let transcriptions = 0;
-  await page.route('**/api/lab/transcribe', (route) => {
+  await page.route('**/api/voice/transcribe', (route) => {
     transcriptions++;
     return route.fulfill({
       json: { text: transcriptions === 1 ? 'Tell me a joke.' : 'Tell me another one.' },
     });
   });
-  await page.route('**/api/lab/chat', (route) => {
+  await page.route('**/api/chat', (route) => {
     messages.push(route.request().postDataJSON());
-    return route.fulfill({ json: { provider: 'muse', answer: `Muse reply ${messages.length}.` } });
+    return route.fulfill({ json: chatReply(`Muse reply ${messages.length}.`) });
   });
-  await page.goto('/muse');
+  await openAssistant(page);
   await page.getByRole('button', { name: 'Talk to Muse', exact: true }).click();
   await expect(page.getByRole('meter', { name: 'Microphone level' })).toBeVisible();
   await page.evaluate(() => {
@@ -64,18 +62,18 @@ test('pause sends automatically, replies aloud, and listens for a fresh follow-u
   await page.getByRole('button', { name: 'Stop voice session', exact: true }).click();
   await page.clock.runFor(500);
   expect(await page.evaluate(() => window.__voiceTest.streams)).toBe(2);
-  await expect(page.getByRole('textbox', { name: 'Message Muse' })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: 'Ask about a shared object' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Talk to Muse', exact: true })).toBeEnabled();
 });
 
 test('silence ends the session without sending audio or using the model', async ({ page }) => {
   await page.clock.install();
   let calls = 0;
-  await page.route('**/api/lab/transcribe', (route) => {
+  await page.route('**/api/voice/transcribe', (route) => {
     calls++;
     return route.fulfill({ json: { text: 'should not happen' } });
   });
-  await page.goto('/muse');
+  await openAssistant(page);
   await page.getByRole('button', { name: 'Talk to Muse', exact: true }).click();
   await expect(page.getByRole('meter')).toBeVisible();
   await page.clock.runFor(8200);
@@ -83,16 +81,18 @@ test('silence ends the session without sending audio or using the model', async 
   await expect(page.getByRole('button', { name: 'Stop voice session' })).not.toBeVisible();
   expect(calls).toBe(0);
   expect(await page.evaluate(() => window.__voiceTest.stopped)).toBe(1);
-  await expect(page.getByRole('textbox', { name: 'Message Muse' })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: 'Ask about a shared object' })).toBeEnabled();
 });
 
 test('blocked spoken playback pauses the loop and leaves the reply readable', async ({ page }) => {
   await page.clock.install();
-  await page.route('**/api/lab/transcribe', (route) => route.fulfill({ json: { text: 'Hello' } }));
-  await page.route('**/api/lab/chat', (route) =>
-    route.fulfill({ json: { provider: 'muse', answer: 'Hello from Muse.' } }),
+  await page.route('**/api/voice/transcribe', (route) =>
+    route.fulfill({ json: { text: 'Hello' } }),
   );
-  await page.goto('/muse');
+  await page.route('**/api/chat', (route) =>
+    route.fulfill({ json: chatReply('Hello from Muse.') }),
+  );
+  await openAssistant(page);
   await page.evaluate(() => {
     window.__voiceTest.amplitude = 0.08;
     window.__voiceTest.blocked = true;
@@ -110,7 +110,7 @@ test('blocked spoken playback pauses the loop and leaves the reply readable', as
   await page.clock.runFor(500);
   expect(await page.evaluate(() => window.__voiceTest.streams)).toBe(1);
   await expect(page.getByRole('button', { name: 'Read reply', exact: true })).toBeEnabled();
-  await expect(page.getByRole('textbox', { name: 'Message Muse' })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: 'Ask about a shared object' })).toBeEnabled();
 });
 
 test('stopping during transcription prevents late automatic chat submission', async ({ page }) => {
@@ -121,16 +121,16 @@ test('stopping during transcription prevents late automatic chat submission', as
   });
   let transcribing = false;
   let chats = 0;
-  await page.route('**/api/lab/transcribe', async (route) => {
+  await page.route('**/api/voice/transcribe', async (route) => {
     transcribing = true;
     await waiting;
     await route.fulfill({ json: { text: 'Do not send this canceled question' } }).catch(() => {});
   });
-  await page.route('**/api/lab/chat', (route) => {
+  await page.route('**/api/chat', (route) => {
     chats++;
-    return route.fulfill({ json: { provider: 'muse', answer: 'Unexpected' } });
+    return route.fulfill({ json: chatReply('Unexpected') });
   });
-  await page.goto('/muse');
+  await openAssistant(page);
   await page.evaluate(() => {
     window.__voiceTest.amplitude = 0.08;
   });
@@ -145,18 +145,18 @@ test('stopping during transcription prevents late automatic chat submission', as
   await page.getByRole('button', { name: 'Stop voice session', exact: true }).click();
   release();
   await page.clock.runFor(500);
-  await expect(page.getByRole('textbox', { name: 'Message Muse' })).toBeEnabled();
-  await expect(page.getByRole('textbox', { name: 'Message Muse' })).toHaveValue('');
+  await expect(page.getByRole('textbox', { name: 'Ask about a shared object' })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: 'Ask about a shared object' })).toHaveValue('');
   expect(chats).toBe(0);
 });
 
 test('hiding the page ends listening without uploading the unfinished turn', async ({ page }) => {
   let transcriptions = 0;
-  await page.route('**/api/lab/transcribe', (route) => {
+  await page.route('**/api/voice/transcribe', (route) => {
     transcriptions++;
     return route.fulfill({ json: { text: 'Unexpected' } });
   });
-  await page.goto('/muse');
+  await openAssistant(page);
   await page.getByRole('button', { name: 'Talk to Muse', exact: true }).click();
   await expect(page.getByRole('meter')).toBeVisible();
   await page.evaluate(() => {

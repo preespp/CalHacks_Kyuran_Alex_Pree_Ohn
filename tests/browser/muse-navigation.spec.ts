@@ -1,43 +1,43 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { joinAsGuest } from './guest-helpers';
 
-test('development proxy keeps household and standalone Muse APIs separate', async ({ request }) => {
+test('household API works and standalone Muse endpoints are retired', async ({ request }) => {
   const household = await request.get('/api/health');
-  const muse = await request.get('/api/lab/health');
   expect(household.ok()).toBeTruthy();
-  expect(muse.ok()).toBeTruthy();
   expect((await household.json()).memory_provider).toBe('sqlite');
-  expect((await muse.json()).memory_provider).toBe('none');
+  expect((await request.get('/api/lab/health')).status()).toBe(404);
+  expect((await request.post('/api/lab/chat', { data: { message: 'Hi' } })).status()).toBe(404);
+  expect((await request.post('/api/chat', { data: { message: 'Hi' } })).status()).toBe(401);
 });
 
-test('main menu opens independent Muse chat and links back to the household', async ({ page }) => {
+test('main menu keeps Ask Muse and removes standalone Muse chat', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'Muse chat', exact: true }).click();
-  await expect(page).toHaveURL(/\/muse$/);
+  await joinAsGuest(page);
+  await expect(page.getByRole('link', { name: 'Muse chat', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Ask Muse', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Just ask your household.' })).toBeVisible();
   await page.getByRole('button', { name: 'Our memory', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'A home that remembers.' })).toBeVisible();
 });
 
-test('root remains the household homepage even with the obsolete isolated launch flag', async ({
-  page,
-}) => {
-  await page.goto('http://127.0.0.1:5175/');
-  await expect(page).toHaveURL('http://127.0.0.1:5175/');
-  await expect(page.getByRole('heading', { name: 'A home that remembers.' })).toBeVisible();
-  await page.getByRole('link', { name: 'Muse chat', exact: true }).click();
+test('old Muse bookmarks open the integrated household assistant', async ({ page }) => {
+  await page.goto('/muse');
+  await expect(page).toHaveURL(/\/\?view=assistant$/);
+  await joinAsGuest(page);
   await expect(page.getByRole('heading', { name: 'Just ask your household.' })).toBeVisible();
-  await expect(page.getByRole('note', { name: 'Temporary assistant test mode' })).toContainText(
-    'memory is disconnected',
-  );
-  await expect(page.getByRole('textbox', { name: 'Message Muse' })).toBeEnabled();
+  await expect(page.getByRole('note', { name: 'About this chat' })).toHaveCount(0);
 });
 
-test('unavailable household API offers the working Muse chat route', async ({ page }) => {
-  await page.route('**/api/demo/session', (route) =>
+test('unavailable household API shows a recoverable error without a retired chat link', async ({
+  page,
+}) => {
+  await page.route('**/api/guest/session', (route) =>
     route.fulfill({ status: 404, json: { detail: 'Not Found' } }),
   );
   await page.goto('/');
-  await expect(page.getByRole('alert')).toContainText('household API is unavailable');
-  await page.getByRole('link', { name: 'Open Muse chat', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Just ask your household.' })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Your name' }).fill('Pree');
+  await page.getByRole('button', { name: 'Continue as guest', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('We couldn’t open your household');
+  await expect(page.getByRole('link', { name: 'Open Muse chat', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Continue as guest', exact: true })).toBeEnabled();
 });

@@ -45,7 +45,7 @@ def stub_model(monkeypatch, query="HDMI adapter", first=None, status=200):
         evidence = response["response"]["matches"][0]
         assert "image_url" not in evidence["latest"]
         latest = evidence["latest"]
-        text = f"{latest['actor_name']} {latest['source']} {evidence['label']}: {latest['room']}, {latest['location']} at {latest['observed_at']}."
+        text = f"{latest['source']} {evidence['label']}: {latest['room']}, {latest['location']} at {latest['observed_at']}."
         return httpx.Response(200, json={"candidates": [{"finishReason": "STOP", "content": {"role": "model", "parts": [{"thought": True, "text": "hidden thought"}, {"text": text}]}}]})
 
     monkeypatch.setattr("commonplace_api.assistant.httpx.AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(respond), **kwargs))
@@ -76,7 +76,8 @@ def test_gemini_tool_loop_reads_shared_updates_and_keeps_earlier_photo(assistant
     ]})
     assert after.status_code == 200
     data = after.json()
-    assert "Alex reported" in data["answer"] and "green box" in data["answer"]
+    assert "reported" in data["answer"] and "green box" in data["answer"]
+    assert "Alex" not in data["answer"]
     assert data["matches"][0]["latest"]["source"] == "reported"
     assert data["matches"][0]["last_visual"]["source"] == "sample"
     assert data["provider"] == "gemini"

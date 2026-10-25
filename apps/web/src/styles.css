@@ -2192,6 +2192,14 @@ button:focus-visible, input:focus-visible {
     flex-direction: column;
     align-items: flex-start;
   }
+  .top-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search {
+    width: 100%;
+  }
   .partner-logos {
     grid-template-columns: repeat(3, 1fr);
   }

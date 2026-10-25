@@ -110,13 +110,13 @@ export default function App() {
   useEffect(() => {
     if (session) return;
     let cancelled = false;
-    api<Session>('/api/demo/session', undefined, {
+    api<Session>('/api/guest/session', undefined, {
       method: 'POST',
-      body: JSON.stringify({ profile: 'alex' }),
+      body: JSON.stringify({ name: 'Pree' }),
     })
       .then((val) => {
         if (!cancelled) {
-          sessionStorage.setItem('commonplace-session', JSON.stringify(val));
+          sessionStorage.setItem('commonplace-guest-session', JSON.stringify(val));
           setSession(val);
         }
       })
@@ -241,15 +241,16 @@ export default function App() {
   }
 
   function handleSwitchProfile(profile: Profile) {
-    sessionStorage.removeItem('commonplace-session');
+    sessionStorage.removeItem('commonplace-guest-session');
     setSession(null);
     setProfileModal(false);
-    api<Session>('/api/demo/session', undefined, {
+    const profileName = { alex: 'Alex', pree: 'Pree', kyuran: 'Kyuran' }[profile];
+    api<Session>('/api/guest/session', undefined, {
       method: 'POST',
-      body: JSON.stringify({ profile }),
+      body: JSON.stringify({ name: profileName }),
     })
       .then((val) => {
-        sessionStorage.setItem('commonplace-session', JSON.stringify(val));
+        sessionStorage.setItem('commonplace-guest-session', JSON.stringify(val));
         setSession(val);
         setRevision((r) => r + 1);
       })
@@ -346,7 +347,7 @@ export default function App() {
           <header className="topbar">
             <div>
               <p className="eyebrow">{currentDate.toUpperCase()}</p>
-              <h1>
+              <h1 aria-label="A home that remembers.">
                 Good memory,{' '}
                 <RotatingText
                   words={[
@@ -364,6 +365,7 @@ export default function App() {
               <label className="search">
                 <Search size={18} />
                 <input
+                  aria-label="Search objects"
                   placeholder="Search your memory"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -374,6 +376,7 @@ export default function App() {
               <button
                 type="button"
                 className="scan-button"
+                aria-label="Scan room"
                 onClick={handleOpenScanModal}
               >
                 <Camera size={18} />

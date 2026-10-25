@@ -73,11 +73,13 @@ export default function CapturePanel({
   health,
   onSaved,
   compact = false,
+  selectedRoom = 'Living room',
 }: {
   token: string;
   health: Health | null;
   onSaved: () => void;
   compact?: boolean;
+  selectedRoom?: string;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const mounted = useRef(true);
@@ -94,7 +96,10 @@ export default function CapturePanel({
     scanId?: string;
     processed?: number;
   }>({ id: 0, active: false, opening: false, busy: false });
-  const [room, setRoom] = useState('Living room');
+  const [room, setRoom] = useState(selectedRoom);
+  useEffect(() => {
+    setRoom(selectedRoom);
+  }, [selectedRoom]);
   const [seconds, setSeconds] = useState(5);
   const autoAttempted = useRef(false);
   const modeChosen = useRef(false);

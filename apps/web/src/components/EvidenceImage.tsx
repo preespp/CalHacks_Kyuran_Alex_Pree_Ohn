@@ -6,10 +6,12 @@ export default function EvidenceImage({
   observation,
   token,
   highlight = false,
+  depthMode = false,
 }: {
   observation: Observation | null;
   token: string;
   highlight?: boolean;
+  depthMode?: boolean;
 }) {
   const [url, setUrl] = useState('');
   const [failed, setFailed] = useState(false);
@@ -19,7 +21,8 @@ export default function EvidenceImage({
     setUrl('');
     setFailed(false);
     if (observation?.image_url) {
-      fetch(observation.image_url, {
+      const endpoint = depthMode ? `${observation.image_url}/depth` : observation.image_url;
+      fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       })
@@ -39,7 +42,7 @@ export default function EvidenceImage({
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [observation?.image_url, token]);
+  }, [observation?.image_url, token, depthMode]);
   const box = observation?.bbox;
   return (
     <div className="evidence-image">

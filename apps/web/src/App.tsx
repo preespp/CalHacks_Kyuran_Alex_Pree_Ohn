@@ -26,7 +26,7 @@ import type { Health, MemoryObject, Profile, Session } from './types';
 
 function loadSession(): Session | null {
   try {
-    const value = JSON.parse(sessionStorage.getItem('commonplace-session') ?? 'null');
+    const value = JSON.parse(sessionStorage.getItem('commonplace-guest-session') ?? 'null');
     return value?.token && value?.member ? value : null;
   } catch {
     return null;

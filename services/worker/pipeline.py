@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import json
 import secrets
 from typing import Any, Optional
+from collections import Counter
+from starlette.concurrency import run_in_threadpool
 import numpy as np
 
 from commonplace_api.config import Settings
@@ -23,10 +25,10 @@ class CaptureInput:
     raw_bytes: bytes
     room: str = "Living room"
     capture_id: str = field(default_factory=lambda: f"cap_{secrets.token_hex(3)}")
-    seen_by: str = "Alex"
-    photo_url: str = "blob://captures/capture.jpg"
-    household_id: str = "house_default"
+    photo_url: Optional[str] = None
+    household_id: str = "demo-home"
     timestamp: Optional[str] = None
+    normalized: bool = False
 
 
 def generate_sighting_summary(
@@ -78,7 +80,7 @@ async def process_capture(
     timestamp = capture.timestamp or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     # Step 1: Normalize Image
-    image = normalize_image(capture.raw_bytes)
+    image = capture.raw_bytes if capture.normalized else normalize_image(capture.raw_bytes)
 
     # Step 2: Gemini 2D Object Detection
     detections = await detect(settings, image, capture.room)
@@ -87,8 +89,10 @@ async def process_capture(
 
     # Step 3: Depth Anything V2 Box Sampling
     boxes = [d.bbox for d in detections]
-    depths = depth_for_boxes(image, boxes)
-    ranks = rank_by_depth(depths)
+    use_models = settings.vision_enrichment == "models"
+    depths = await run_in_threadpool(depth_for_boxes, image, boxes) if use_models else [0.0] * len(boxes)
+    ranks = rank_by_depth(depths) if use_models else [None] * len(boxes)
+    signatures = Counter((d.label.casefold(), d.appearance.casefold()) for d in detections)
 
     # Step 4: Extract visual crop embeddings & resolve identities across multi-view sequence
     assigned_objects: list[TrackedObject] = []
@@ -96,12 +100,19 @@ async def process_capture(
     claimed_in_this_frame: set[str] = set()
 
     for det in detections:
-        emb = embed_crop(image, det.bbox)
+        emb = await run_in_threadpool(embed_crop, image, det.bbox) if use_models else []
         crop_embeddings.append(emb)
 
         # Candidates: existing objects not already claimed in this specific frame
         candidates = [obj for obj in existing_objects if obj.object_id not in claimed_in_this_frame]
-        matched = find_match(emb, det.label, candidates)
+        if use_models:
+            matched = find_match(emb, det.label, candidates)
+        else:
+            # Conservative metadata association when optional local ML models
+            # aren't installed. Never choose between identical-looking objects.
+            matches = [o for o in candidates if o.label.casefold() == det.label.casefold()
+                       and o.appearance.casefold() == det.appearance.casefold() and det.appearance.strip()]
+            matched = matches[0] if len(matches) == 1 and signatures[(det.label.casefold(), det.appearance.casefold())] == 1 else None
 
         if matched is None:
             new_obj = create_object(
@@ -111,7 +122,7 @@ async def process_capture(
             )
             existing_objects.append(new_obj)
             matched = new_obj
-        else:
+        elif use_models:
             # Smooth embedding with exponential moving average across camera views
             old_v = np.array(matched.embedding, dtype=np.float32)
             new_v = np.array(emb, dtype=np.float32)
@@ -146,14 +157,13 @@ async def process_capture(
             "sighting_id": sighting_id,
             "capture_id": capture.capture_id,
             "room": capture.room,
-            "seen_by": capture.seen_by,
             "timestamp": timestamp,
             "photo_url": capture.photo_url,
             "frame_position": {
                 "bbox_norm": [round(float(c), 3) for c in det.bbox],
                 "h_zone": h_zone(det.bbox),
                 "v_zone": v_zone(det.bbox),
-                "depth_value": round(float(dep), 3),
+                "depth_value": round(float(dep), 3) if use_models else None,
                 "depth_rank": rank,
             },
             "relations": obj_rels,
@@ -164,7 +174,7 @@ async def process_capture(
             "summary": summary,
             "sighting_id": sighting_id,
         }
-        obj.sightings.append(sighting)
+        obj.sightings = [sighting]  # Durable history is stored in object_sighting.
         obj.updated_at = timestamp
 
     # Return distinct tracked objects formatted as dictionary payloads
@@ -174,6 +184,6 @@ async def process_capture(
     for obj in assigned_objects:
         if obj.object_id not in seen_ids:
             seen_ids.add(obj.object_id)
-            unique_objects.append(obj.to_dict())
+            unique_objects.append({**obj.to_dict(), "embedding": obj.embedding})
 
     return unique_objects

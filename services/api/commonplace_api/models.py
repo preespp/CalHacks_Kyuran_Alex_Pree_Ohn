@@ -1,10 +1,24 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DemoSessionRequest(BaseModel):
     profile: Literal["alex", "pree", "kyuran"] = "pree"
+
+
+class GuestSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    user_id: Optional[str] = Field(default=None, pattern=r"^guest-[a-f0-9]{32}$")
+
+    @model_validator(mode="after")
+    def single_line_name(self) -> "GuestSessionRequest":
+        if (self.name is None) == (self.user_id is None):
+            raise ValueError("Provide either a new name or an existing user_id")
+        if self.name and any(ord(char) < 32 or ord(char) == 127 for char in self.name):
+            raise ValueError("Use a single-line display name")
+        return self
 
 
 class Detection(BaseModel):
@@ -52,9 +66,9 @@ class ObservationResponse(BaseModel):
     bbox: Optional[list[float]]
     source: Literal["sample", "gemini", "reported"]
     kind: Literal["seen", "moved", "found", "correction"]
-    actor_name: str
     observed_at: str
     label: Optional[str] = None
+    spatial: Optional[dict] = None
 
 
 class ObjectResponse(BaseModel):
@@ -78,11 +92,46 @@ class ActivityResponse(BaseModel):
     events: list[ObservationResponse]
 
 
+class FrameQualityResponse(BaseModel):
+    frame_id: int
+    width: int
+    height: int
+    sharpness: float
+    brightness: float
+    quality_score: float
+
+
+class CameraAnalysisResponse(BaseModel):
+    state: Literal["disabled", "waiting", "processing", "error"]
+    processed_frames: int
+    count: int
+    observed_at: Optional[str]
+    error: Optional[str]
+
+
+class CameraUploadResponse(BaseModel):
+    provider: Literal["spacetimedb"]
+    state: Literal["uploaded"]
+    session: str
+    sequence: int
+
+
+class CameraFramesResponse(BaseModel):
+    received_frames: int
+    received_fps: float
+    quality: FrameQualityResponse
+    top_frames: list[FrameQualityResponse]
+    analysis: Optional[CameraAnalysisResponse] = None
+    image_upload: Optional[CameraUploadResponse] = None
+
+
 class CaptureResponse(BaseModel):
     capture_id: str
     object_ids: list[str]
     count: int
     source: Literal["sample", "gemini"]
+    superseded: bool = False
+    frame_stats: Optional[CameraFramesResponse] = None
 
 
 class ConnectorSearchResponse(BaseModel):
@@ -90,3 +139,29 @@ class ConnectorSearchResponse(BaseModel):
     matches: list[ObjectResponse]
     needs_disambiguation: bool
     guidance: str
+
+
+class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    message: str = Field(min_length=1, max_length=1000)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=8)
+
+
+class ChatResponse(BaseModel):
+    provider: Literal["gemini", "muse"] = "gemini"
+    answer: str
+    query: str
+    matches: list[ObjectResponse]
+    total_matches: int
+    needs_disambiguation: bool
+
+
+class TranscriptResponse(BaseModel):
+    text: str
+    provider: Literal["muse"] = "muse"

@@ -1,16 +1,11 @@
-# Vision worker milestone
+# Connected Onyu vision worker
 
-The first scaffold processes real captures in `services/api/commonplace_api/main.py` during the request. `vision.py` is the reusable provider adapter. This directory documents the extraction boundary; it does not contain a fake running worker.
+The live web workflow now invokes `process_capture` in [pipeline.py](pipeline.py) after reading the uploaded image back from SpacetimeDB. Its validated results are committed through `commit_vision_capture` to `vision_capture`, `object_memory`, and `object_sighting`. The memory page and Muse read those same records. See [full workflow setup](../../docs/LIVE_WORKFLOW.md).
 
-When introducing the worker:
+Set `MEMORY_PROVIDER=spacetimedb`, `VISION_PROVIDER=gemini`, `CAMERA_FRAME_SINK=spacetimedb` and `SEED_SAMPLE_DATA=false`. The shared database module must expose the new tables and reducer; the current team database has been updated with approval.
 
-1. The API authorizes the member, normalizes/uploads the image, and atomically creates a durable job.
-2. A worker claims a job through a short transaction with a lease and bounded attempt count.
-3. It calls Gemini outside the database transaction.
-4. It validates all observations and resolves candidate object identity conservatively.
-5. A granted service identity commits observations and completes the job atomically.
-6. The UI subscribes to job status and household views.
+`VISION_ENRICHMENT=geometry` uses Gemini labels/boxes plus image zones, relations and conservative unique label/appearance association. Depth values/ranks are absent. It requires no PyTorch downloads. `VISION_ENRICHMENT=models` additionally uses Depth Anything and SigLIP; install `services/api[spatial]` and budget for weights, memory and inference time. Relative depth is never converted into uncalibrated meters.
 
-Use a unique household/request ID for idempotency. Persist image receipt time separately from inference completion time so slow results do not supersede newer sightings. Retry transient provider failures with bounded backoff; do not retry invalid images or malformed observations indefinitely. Release/expire leases after worker crashes. Clean up orphan uploads and define image retention.
+The original `RealtimeStreamEngine` remains a separate experimental video runner; it is not the web app's production callback. The connected path uses one Gemini call per selected image and stores real timestamps and photo references, without a fabricated contributor or example photo URL.
 
-The intended jobs and subscriptions live in SpacetimeDB; a second cloud database or message broker is not required for the first worker version.
+`camera_jobs.py` provides one active job and one latest pending frame per scan. It is still in-process: pending jobs are lost on restart. There is no distributed leasing or automatic backfill of historical images. Durable jobs, bounded retries and retention are future work.

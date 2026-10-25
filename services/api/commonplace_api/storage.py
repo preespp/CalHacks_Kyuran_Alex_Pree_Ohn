@@ -19,23 +19,5 @@ class LocalImages:
         return (self.directory / key).read_bytes()
 
 
-class AzureImages:
-    def __init__(self, settings: Settings):
-        try:
-            from azure.identity import DefaultAzureCredential
-            from azure.storage.blob import BlobServiceClient
-        except ImportError as error:
-            raise RuntimeError("Install services/api[azure] before using Azure storage") from error
-        self.client = BlobServiceClient(settings.azure_account_url, credential=DefaultAzureCredential())
-        self.container = self.client.get_container_client(settings.azure_container)
-
-    def put(self, key: str, image: bytes):
-        from azure.storage.blob import ContentSettings
-        self.container.upload_blob(key, image, overwrite=True, content_settings=ContentSettings(content_type="image/jpeg"))
-
-    def get(self, key: str) -> bytes:
-        return self.container.download_blob(key).readall()
-
-
 def create_storage(settings: Settings):
-    return AzureImages(settings) if settings.storage_provider == "azure" else LocalImages(settings.data_dir / "images")
+    return LocalImages(settings.data_dir / "images")

@@ -1,6 +1,8 @@
 # Shared-memory module
 
-This is a separate, typechecked SpacetimeDB module starter. It is **not yet connected** to the runnable SQLite-backed API or frontend, and it does not import that database automatically.
+This is a typechecked SpacetimeDB module. The optional **saved-user profile registry** is connected to FastAPI through HTTP; see [the user storage guide](../docs/USERS.md). Object/observation tables, vision workers, and live frontend subscriptions remain **not yet connected** to the runnable SQLite-backed app. Existing SQLite data is not imported automatically.
+
+To add only public guest profiles to your teammate's existing module, use the [additive guest-table guide](guest-table/README.md). Do not publish this full module over their deployed source. The public addition is prepared locally and has not been published to their database.
 
 The root `npm ci` installs the module's SDK dependency. Install the [SpacetimeDB CLI](https://spacetimedb.com/install) separately to publish it. Match the CLI/server release to the SDK version resolved in `package-lock.json`.
 
@@ -21,14 +23,15 @@ These follow the CLI's module-directory workflow. Confirm `spacetime publish --h
 
 ## Schema and operations
 
-All tables are private: household, membership, invitation, worker, object, and observation. One identity belongs to one household in this initial schema.
+All tables are private: household, membership, invitation, worker, object, observation, and guest_profile. One identity belongs to one household in this initial schema.
 
+- `createGuestProfile` (HTTP name `create_guest_profile`): the demo-home owner creates selectable string-ID prototype profiles; private reads require the database owner token held by FastAPI. These guest profiles are distinct from native SpacetimeDB membership identities.
 - `createHousehold`: create a household and its owner membership.
 - `issueInvitation`: owner creates a single-use, 24-hour invitation. Generate at least 32 random characters client-side; do not use a predictable phrase.
 - `joinHousehold`: consume the invitation and join as a member.
 - `grantWorker` / `revokeWorker`: owner controls a separate backend identity's ability to submit visual observations.
-- `recordVisualObservation`: granted worker records image evidence with a validated normalized box and household contributor.
-- `reportLocation`: a member reports a location without fabricating visual evidence.
+- `recordVisualObservation`: granted worker records image evidence with a validated normalized box and no contributor identity. The legacy optional actor column remains unset; publishing this schema change requires coordination with the database teammate.
+- `reportLocation`: legacy member location-report reducer; writes no visual evidence or contributor. The app now uses camera scanning for updates.
 - `my_membership`, `household_objects`, `household_observations`: identity-filtered subscribable views.
 
 To integrate, generate bindings, connect the browser with a stable authenticated identity, create/join the household through reducers, and subscribe to these views. Then replace the local API storage implementation and authorize the worker identity. Never expose the worker's credentials to the browser or make the source tables public as a shortcut.

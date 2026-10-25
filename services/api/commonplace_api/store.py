@@ -19,9 +19,10 @@ def now() -> str:
 
 
 class Store:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, include_samples=True):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
+        self.include_samples = include_samples
         with self.connection() as db:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -65,6 +66,8 @@ class Store:
             db.close()
 
     def seed(self):
+        if not self.include_samples:
+            return
         with self.connection() as db:
             for profile in ("alex", "pree", "kyuran"):
                 db.execute("INSERT OR IGNORE INTO members VALUES (?, 'demo-home', ?)", (profile, profile.title()))
@@ -149,7 +152,8 @@ class Store:
         with self.connection() as db:
             return [self.observation(r) for r in db.execute("""SELECT o.*
                 FROM observations o
-                WHERE o.household_id=? AND o.object_id=? ORDER BY o.observed_at DESC, o.created_at DESC, o.rowid DESC""", (household, oid))]
+                WHERE o.household_id=? AND o.object_id=? AND (? OR o.source != 'sample')
+                ORDER BY o.observed_at DESC, o.created_at DESC, o.rowid DESC""", (household, oid, self.include_samples))]
 
     def objects(self, household: str, query: str = "", room: str = ""):
         terms = [x for x in query.casefold().split() if x not in {"where", "is", "are", "my", "the", "our", "a", "an", "did", "we", "leave", "it", "for"}]
@@ -173,11 +177,11 @@ class Store:
         with self.connection() as db:
             return [self.observation(row) for row in db.execute("""SELECT o.*, x.label
                 FROM observations o JOIN objects x ON x.id=o.object_id
-                WHERE o.household_id=? ORDER BY o.observed_at DESC, o.created_at DESC, o.rowid DESC LIMIT 30""", (household,))]
+                WHERE o.household_id=? AND (? OR o.source != 'sample') ORDER BY o.observed_at DESC, o.created_at DESC, o.rowid DESC LIMIT 30""", (household, self.include_samples))]
 
     def owns_image(self, household: str, key: str) -> bool:
         with self.connection() as db:
-            return db.execute("SELECT 1 FROM observations WHERE household_id=? AND image_key=? LIMIT 1", (household, key)).fetchone() is not None
+            return db.execute("SELECT 1 FROM observations WHERE household_id=? AND image_key=? AND (? OR source != 'sample') LIMIT 1", (household, key, self.include_samples)).fetchone() is not None
 
     def add_note(self, member, oid, note):
         timestamp = now()

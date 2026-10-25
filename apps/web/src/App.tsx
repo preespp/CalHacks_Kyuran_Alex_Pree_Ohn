@@ -277,7 +277,7 @@ export default function App() {
                 <Search size={22} />
                 <input
                   aria-label="Search objects"
-                  placeholder="Try “HDMI adapter” or “blue water bottle”"
+                  placeholder="Search remembered objects"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                 />
@@ -295,10 +295,10 @@ export default function App() {
                 </span>
               </div>
               <div className="search-suggestions">
-                <span>A little inspiration</span>
-                {['House keys', 'HDMI adapter', 'Blue water bottle'].map((label) => (
-                  <button key={label} onClick={() => setQuery(label)}>
-                    {label}
+                <span>{items.length ? 'From your memory' : 'Your camera will add items here'}</span>
+                {items.slice(0, 3).map((item) => (
+                  <button key={item.id} onClick={() => setQuery(item.label)}>
+                    {item.label}
                     <ArrowUpRight size={12} />
                   </button>
                 ))}
@@ -381,8 +381,12 @@ export default function App() {
               ) : (
                 <div className="empty-state">
                   <Search size={29} />
-                  <h3>No stored match yet.</h3>
-                  <p>Try a different name or scan the surface where you last saw it.</p>
+                  <h3>{search || room ? 'No stored match yet.' : 'No items remembered yet.'}</h3>
+                  <p>
+                    {search || room
+                      ? 'Try a different name or scan the surface where you last saw it.'
+                      : 'Turn on the camera and scan your room to start your shared memory.'}
+                  </p>
                   <button
                     className="secondary-button"
                     onClick={() => {

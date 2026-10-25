@@ -1,90 +1,74 @@
-# Connect the camera to the team's image database
+# Live image and shared-memory pipeline
 
-The camera can forward normalized JPEGs through the existing `upload_binary_frame` reducer on the team's SpacetimeDB database. This is a separate connection from the guest registry and from retained evidence images.
+The camera and object-memory workflow is now connected. Follow [the full workflow and testing guide](LIVE_WORKFLOW.md) for configuration, tables, Onyu's processing, and Muse verification.
 
 ```mermaid
 flowchart LR
-  Phone[Camera: every 3–5 seconds] --> API[FastAPI: authenticate and normalize]
-  API --> Upload[upload_binary_frame]
-  Upload --> Queue[(Team image_stream_binary)]
-  Queue --> TeamWorker[Teammate's image consumer]
-  API -->|Memory mode enabled| Gemini[Existing Gemini adapter]
-  Gemini --> Memory[(Local object memory)]
-  Memory --> Muse[Muse lookup]
+  Camera[Camera: every 3–5 seconds] --> API[FastAPI: normalize JPEG]
+  API --> Queue[(SpacetimeDB image_stream_binary)]
+  Queue --> Read[Verify saved frame]
+  Read --> Onyu[Onyu process_capture + Gemini]
+  Onyu --> Commit[commit_vision_capture]
+  Commit --> Images[(vision_capture: retained evidence)]
+  Commit --> Objects[(object_memory: current objects)]
+  Commit --> History[(object_sighting: history)]
+  Objects --> UI[Memory page and Muse]
 ```
 
-## Configured databases
-
-| Purpose                  | Configuration                   | Database                                                           |
-| ------------------------ | ------------------------------- | ------------------------------------------------------------------ |
-| Saved guests             | `SPACETIMEDB_DATABASE`          | Your separate users-only registry                                  |
-| Captured frame delivery  | `CAMERA_SPACETIMEDB_DATABASE`   | `c2005dfa977b978871c77ab400a529efd494fce3e8d3d60c2aa786050f6ebd02` |
-| Retained object evidence | `STORAGE_PROVIDER` + `DATA_DIR` | Existing local images/SQLite, or the Azure image adapter           |
-
-Do not replace your guest database ID with the image database ID. Each connection has its own credential setting. A database ID identifies a destination; it does not grant upload permission.
-
-## Upload access
-
-Both upload reducers accept anonymous requests. Both image tables are publicly readable; acknowledgment/deletion still requires the configured backend identity. Frame validation remains enforced. The API only appends frames and never acknowledges or deletes them.
-
-## Root `.env`
-
-The image database address has been added separately. The code defaults to disabled delivery. Enable delivery with these settings:
-
-```dotenv
-CAMERA_FRAME_SINK=spacetimedb
-CAMERA_SPACETIMEDB_URL=https://maincloud.spacetimedb.com
-CAMERA_SPACETIMEDB_DATABASE=c2005dfa977b978871c77ab400a529efd494fce3e8d3d60c2aa786050f6ebd02
-CAMERA_SPACETIMEDB_TOKEN=
-```
-
-Leave `CAMERA_SPACETIMEDB_TOKEN` empty for anonymous uploads and restart `make api`. Keep your existing `SPACETIMEDB_*` guest settings. `GUEST_PROFILE_STORE` accepts only `auto`, `local`, `sqlite`, or `spacetimedb`; `GUEST_PROFILE_STORE=local make api` is a **terminal command**, not a value to put in `.env`.
-
-
-No Gemini key is required to test image delivery alone. To also run the app's existing Gemini memory analysis, configure:
+## Required settings
 
 ```dotenv
 VISION_PROVIDER=gemini
-GEMINI_VISION_API_KEY=YOUR_VISION_KEY
-GEMINI_MODEL=YOUR_IMAGE_CAPABLE_MODEL_ID
+MEMORY_PROVIDER=spacetimedb
+CAMERA_FRAME_SINK=spacetimedb
+SEED_SAMPLE_DATA=false
+VISION_ENRICHMENT=geometry
+CAMERA_SPACETIMEDB_URL=https://maincloud.spacetimedb.com
+CAMERA_SPACETIMEDB_DATABASE=c2005dfa977b978871c77ab400a529efd494fce3e8d3d60c2aa786050f6ebd02
 ```
 
-Keep `ASSISTANT_PROVIDER=muse` and your Meta credentials for Muse. If your teammate's image consumer already calls Gemini, coordinate which worker should perform inference to avoid processing the same frame twice.
+Keep the tested `GEMINI_VISION_API_KEY` / `GEMINI_MODEL` and Muse settings in the backend `.env`. The three new memory tables and commit reducer were published to this database with approval. Saved guests still use its existing `user` table through their separate adapter. The API no longer reads local sample objects when remote memory is selected.
 
-## Test through the camera
+The current prototype upload and commit reducers accept public access. An optional `CAMERA_SPACETIMEDB_TOKEN` remains backend-only. The app never acknowledges or deletes queue rows. Images that contribute to a completed capture are retained in `vision_capture`, so evidence does not disappear if another authorized consumer removes its queue source later.
 
-1. Run `make api` and `make web` in separate terminals, then join the app.
-2. Open Camera. With upload delivery enabled, its summary shows **Sharing with your household**. Stop the camera before selecting a mode.
-3. Choose **Share camera view only** to test delivery independently. Select **Share camera view**. The default is one immediate frame followed by one every five seconds; choices remain 3/4/5 seconds.
-4. Wait for **Your latest view has been shared**. Select **Stop sharing camera** after the test. Your database teammate can inspect the queue/consumer using their own access. A frame may already have been consumed and acknowledged by their worker.
-5. For the app's local vision/memory path, select **Update shared memory**, start scanning, wait for the memory update, then confirm objects/evidence in Our memory and ask Muse about one.
+## Upload contract
 
-`GET /api/health` reports `camera_frame_sink`. Each successful `POST /api/camera/frames` includes `image_upload: {provider: "spacetimedb", state: "uploaded", session, sequence}` when delivery is enabled. An upload confirmation means the reducer accepted the frame; it does not confirm the teammate's vision processing or result persistence.
-
-Upload-only mode sends images to the shared database while keeping this app's Gemini calls and object-memory writes off. With delivery disabled, preview retains its existing temporary quality-check behavior.
-
-## Handoff contract
-
-The adapter calls the [HTTP reducer endpoint](https://spacetimedb.com/docs/http/database/) with this ordered JSON argument array:
+`upload_binary_frame` receives the ordered [HTTP reducer arguments](https://spacetimedb.com/docs/http/database/):
 
 ```text
 [session, sequence, capturedUs, width, height, jpeg]
 ```
 
-- `session`: first 32 hexadecimal characters of SHA-256 over Python `json.dumps([household, scan_id])` encoded as UTF-8; stable per household/scan and compatible with the reducer.
-- `sequence`: one-based count within the current diagnostic scan state.
-- `capturedUs`: Unix receipt timestamp in microseconds, before upload/inference.
-- `width`, `height`: dimensions of the normalized JPEG; EXIF rotation is applied.
-- `jpeg`: normalized JPEG bytes as a JSON array of integers from 0 to 255; stored as binary bytes.
+`session` is a stable 32-character hexadecimal hash of the household and scan ID. `sequence` is one-based. `capturedUs` is the API receipt time in microseconds. The JPEG is resized to at most 1920 pixels on either side and compressed to at most 1 MiB before dimensions are measured. Its SATS JSON representation is a hexadecimal string; the table stores binary bytes. Integer arrays caused gateway failures for larger frames; see the [SpacetimeDB byte serializer](https://github.com/clockworklabs/SpacetimeDB/blob/master/crates/sats/src/ser/serde.rs).
 
-The backend does not retry ambiguous failures automatically. Access, network, and reducer failures stop the camera with an actionable error; Gemini is not started for a failed upload. This connector adds no durable delivery queue or exactly-once guarantee. If scans are resumed after server state expires, consumers should not assume session/sequence alone is a permanent unique key.
+The worker reads that exact session/sequence from the database and verifies dimensions and SHA-256 before Gemini sees it. It does not infer from an older diagnostic top-ranked photo or silently substitute a placeholder.
 
-This integration covers the live-camera `/api/camera/frames` route. The legacy synchronous `/api/captures` route retains its existing behavior. Raw frames in the team's stream are an ingestion queue, not a replacement for saved evidence-image storage.
+## What each status means
 
-The teammate's processed JSON is **not imported back into the app's object memory yet**. That needs an agreed result schema, object IDs, image references, household scope, and a result-consumer/storage adapter. The app's current optional Gemini path still updates SQLite and uses its configured evidence image store. The optimized depth/embedding branch is a separate integration.
+| Status                    | Meaning                                                               |
+| ------------------------- | --------------------------------------------------------------------- |
+| Latest view shared        | Image upload accepted; recognition may still be pending               |
+| Updating shared memory    | Selected frame is being analyzed/committed                            |
+| Updated N visible objects | Validated observations were committed to the configured memory store  |
+| No items clear enough     | Successful empty detection result; no invented objects                |
+| Analysis error            | Vision/readback/commit failed; no successful memory update is claimed |
 
-## Azure and verification
+Select **Update shared memory** on Camera to invoke recognition. **Share camera view only** intentionally uploads without adding objects. The camera captures every 3–5 seconds, defaults to five, and skips busy upload ticks. The backend keeps one active inference and one newest pending frame per scan. The UI polls completion separately from upload and refreshes household memory every five seconds.
 
-Configure these `CAMERA_*` settings on the Azure backend. The uploader token may remain empty for this anonymous-upload prototype. Other service keys remain separate; no database CLI is needed at runtime.
+## Verification and troubleshooting
 
-Automated tests mock the image database and Gemini and verify upload parameters, credential separation, errors, no acknowledgement calls, and continued image/memory behavior. Browser tests cover the upload-only controls and distinguish upload confirmation from vision completion. Test servers explicitly disable real frame delivery so tests do not upload fixtures to the team's database.
+```bash
+.venv/bin/python scripts/check_pipeline.py
+```
+
+This read-only command identifies disabled vision, the wrong object-memory provider, missing tables and a missing commit reducer. It makes no model calls or database writes.
+
+If upload succeeds but no objects appear: check memory mode, `VISION_PROVIDER=gemini`, `MEMORY_PROVIDER=spacetimedb`, and the analysis status. Inspect `vision_capture` to distinguish a completed empty frame from an unprocessed queued image. New configuration needs an API restart and a fresh camera session. `VISION_PROVIDER=demo` never runs Gemini even when a key exists.
+
+“Invalid JPEG frame” is a reducer validation error. Restart the API with the current normalization/hex encoding fix, then stop/start Camera. A successful upload does not prove successful vision; look for the separate completed-memory status.
+
+## Remaining limits
+
+The worker is in-process, not a durable leased queue. Restarting the API loses pending jobs and does not backfill every historical frame. No automatic retries consume extra model calls after a failure. The next active camera frame can continue the workflow. The optional standalone SLAM/video prototypes are not the web app's worker.
+
+For local compatibility tests, `MEMORY_PROVIDER=sqlite` keeps the basic legacy detector and local evidence files. Samples are off by default; explicitly enable `SEED_SAMPLE_DATA=true` only for a separate test dataset. Old sample rows are hidden without deleting them when samples are off.

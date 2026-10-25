@@ -97,6 +97,7 @@ export default function CapturePanel({
   const [room, setRoom] = useState('Living room');
   const [seconds, setSeconds] = useState(5);
   const autoAttempted = useRef(false);
+  const modeChosen = useRef(false);
   const [mode, setMode] = useState<'memory' | 'preview'>(
     health?.vision_provider === 'gemini' ? 'memory' : 'preview',
   );
@@ -113,6 +114,66 @@ export default function CapturePanel({
   const [lastUpdate, setLastUpdate] = useState('');
   const enabled = health?.vision_provider === 'gemini';
   const uploadEnabled = health?.camera_frame_sink === 'spacetimedb';
+
+  useEffect(() => {
+    if (!modeChosen.current && !task.current.active && !task.current.opening)
+      setMode(enabled ? 'memory' : 'preview');
+  }, [enabled]);
+
+  // Inference finishes after upload. Poll completion independently so a last
+  // frame can update the page even when no subsequent camera frame is sent.
+  useEffect(() => {
+    if (!active || mode !== 'memory') return;
+    const id = task.current.id;
+    const scanId = task.current.scanId;
+    const controller = new AbortController();
+    let running = false;
+    const timer = setInterval(async () => {
+      if (running || document.hidden || !scanId) return;
+      running = true;
+      try {
+        const analysis = await api<NonNullable<CameraStats['analysis']>>(
+          `/api/camera/streams/${scanId}`,
+          token,
+          { signal: controller.signal },
+        );
+        if (task.current.id !== id || controller.signal.aborted) return;
+        if (!isRecord(analysis) || typeof analysis.processed_frames !== 'number')
+          throw new Error(
+            'We couldn’t check your latest memory update. Please restart the camera.',
+          );
+        setStats((previous) => (previous ? { ...previous, analysis } : previous));
+        if (analysis.error) {
+          stop();
+          setError(userFacingError(analysis.error, '/api/camera/frames'));
+        } else if (analysis.processed_frames > (task.current.processed ?? 0)) {
+          task.current.processed = analysis.processed_frames;
+          setLastUpdate(
+            analysis.observed_at ? new Date(analysis.observed_at).toLocaleTimeString() : '',
+          );
+          setStatus(
+            analysis.count
+              ? `Updated ${analysis.count} visible ${analysis.count === 1 ? 'object' : 'objects'} in shared memory.`
+              : 'No items were clear enough to remember. Your saved items are still available.',
+          );
+          saved.current();
+        }
+      } catch (failure) {
+        if (task.current.id === id && !controller.signal.aborted) {
+          stop();
+          setError(
+            failure instanceof Error ? failure.message : 'Your latest update could not be checked.',
+          );
+        }
+      } finally {
+        running = false;
+      }
+    }, 1500);
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [active, mode, token]);
 
   function stop(update = true) {
     const current = task.current;
@@ -352,7 +413,10 @@ export default function CapturePanel({
           <select
             value={mode}
             disabled={active || opening}
-            onChange={(event) => setMode(event.target.value as 'memory' | 'preview')}
+            onChange={(event) => {
+              modeChosen.current = true;
+              setMode(event.target.value as 'memory' | 'preview');
+            }}
           >
             <option value="memory" disabled={!enabled}>
               Update shared memory

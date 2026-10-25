@@ -11,6 +11,7 @@ The default is:
 ```dotenv
 GUEST_PROFILE_STORE=auto
 SPACETIMEDB_PROFILE_ACCESS=private
+SPACETIMEDB_PROFILE_TABLE=guest_profile
 SPACETIMEDB_SERVER_TOKEN=
 ```
 
@@ -44,17 +45,32 @@ Restart `make api`. The picker reads guest members from the existing `DATA_DIR/m
 
 ## Keep users in the team's existing public database
 
-Use the [additive guest-table guide](../spacetimedb/guest-table/README.md) to merge a public, insert-only `guest_profile` table and `create_guest_profile` reducer into the teammate's actual module source. This preserves their other tables and needs no owner token at runtime. Set `SPACETIMEDB_PROFILE_ACCESS=public` only after the compatible table/reducer are published. Publishing still requires team management access; a public dashboard link does not provide that permission or the original source. The dashboard's `spacetime dev ... --template chat-react-ts` command generates a template and auto-publishes changes, rather than retrieving that source.
+The merged camera module already publishes `user(identity, name: Option<string>, online)` and `set_name`. Use it directly:
 
-This mode stores unverified guest names publicly. It is appropriate for the shared prototype picker, not private accounts. It does not move image/object storage. The live teammate database has not been modified by preparing this addition.
+```dotenv
+GUEST_PROFILE_STORE=spacetimedb
+SPACETIMEDB_PROFILE_TABLE=user
+SPACETIMEDB_PROFILE_ACCESS=public
+SPACETIMEDB_URL=https://maincloud.spacetimedb.com
+SPACETIMEDB_DATABASE=c2005dfa977b978871c77ab400a529efd494fce3e8d3d60c2aa786050f6ebd02
+SPACETIMEDB_SERVER_TOKEN=
+```
+
+Restart `make api` after changing configuration. There is no table to create or module to publish. Each new guest opens a short anonymous SpacetimeDB WebSocket connection. Its existing `on_connect` creates a fresh user identity; the backend calls `set_name` using only that new identity's temporary token, confirms the row by reading `user`, then closes the connection and discards the token. Your friend's existing users are never renamed. Public named rows appear in the picker; unnamed connections are skipped. The `online` flag reflects that short database connection, not whether a person is currently browsing our app.
+
+The API derives a stable `guest-...` ID from each full database identity. Two people with the same name still have different IDs; selecting a saved profile creates no new database row. App sessions remain random bearer tokens hashed in local SQLite. These names are unverified and shared publicly; this adapter does not grant private-account authentication.
+
+To test: add a name, check `user` in your friend's dashboard, restart the API, and select that same name/short ID from Saved users. `GET /api/guest/users` reports `storage: spacetimedb`. Earlier temporary users are not copied automatically. The local `.env` is configured for this mode; the live integration check added one name, **Integration check**.
+
+The older [additive guest-table guide](../spacetimedb/guest-table/README.md) remains an alternative. Use `SPACETIMEDB_PROFILE_TABLE=guest_profile` only for a database that actually publishes `guest_profile` and `create_guest_profile`.
 
 ## Keep users in a separate SpacetimeDB registry
 
-As an alternative, use the [separate public users-only module guide](../spacetimedb/users/README.md). It avoids changing the teammate's existing schema and uses your own/team publishing access. This module now publishes `guest_profile` as public with insert-only guest creation. If you published its earlier private version, republish to that same users-only database ID before setting `SPACETIMEDB_PROFILE_ACCESS=public` and leaving the server token empty. Azure uses the backend HTTPS adapter and needs no CLI at runtime. The older private full-module registry setup below remains compatible for databases already running that schema.
+As an alternative, use the [separate public users-only module guide](../spacetimedb/users/README.md). It avoids changing the teammate's existing schema and uses your own/team publishing access. This module now publishes `guest_profile` as public with insert-only guest creation. If you published its earlier private version, republish to that same users-only database ID before setting `SPACETIMEDB_PROFILE_ACCESS=public` and leaving the server token empty. Vultr uses the backend HTTPS adapter and needs no CLI at runtime. The older private full-module registry setup below remains compatible for databases already running that schema.
 
 ## Existing full-module registry setup
 
-This is a **profile registry integration**. It does not migrate images, object observations, or session-token hashes to SpacetimeDB. Those integrations remain separate. The app still uses its existing session API and SQLite for session hashes/object history; resetting that local database ends those sessions, but saved SpacetimeDB profiles can be selected again.
+This is a **profile registry integration**. It does not migrate images, object observations, or session-token hashes to SpacetimeDB. Those integrations remain separate. The app still uses its existing session API and SQLite for session hashes; object history uses the independently selected MEMORY_PROVIDER; resetting that local database ends those sessions, but saved SpacetimeDB profiles can be selected again.
 
 ### Prepare the module with your database teammate
 
@@ -89,6 +105,7 @@ Add to the repository-root `.env`:
 ```dotenv
 GUEST_PROFILE_STORE=auto
 SPACETIMEDB_PROFILE_ACCESS=private
+SPACETIMEDB_PROFILE_TABLE=guest_profile
 SPACETIMEDB_URL=http://127.0.0.1:3000
 SPACETIMEDB_DATABASE=commonplace-users-test
 SPACETIMEDB_SERVER_TOKEN=YOUR_PRIVATE_DATABASE_OWNER_TOKEN

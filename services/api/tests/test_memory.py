@@ -14,7 +14,7 @@ from commonplace_api.vision import normalize_image
 
 @pytest.fixture
 def client(tmp_path):
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as client:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as client:
         yield client
 
 
@@ -62,18 +62,18 @@ def test_update_is_shared_and_does_not_fabricate_new_photo(client):
 
 
 def test_sessions_and_history_survive_restart(tmp_path):
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as first:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as first:
         headers = login(first)
         first.post("/api/objects/keys/notes", headers=headers,
                    json={"room": "Entryway", "location": "In the bowl", "kind": "found"})
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as second:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as second:
         keys = second.get("/api/objects?q=keys", headers=headers).json()["objects"][0]
         assert keys["latest"]["room"] == "Entryway"
         assert len(second.get("/api/objects/keys/history", headers=headers).json()["observations"]) == 2
 
 
 def test_foreign_household_cannot_read_or_mutate(tmp_path):
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as client:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as client:
         store = Store(tmp_path / "memory.sqlite3")
         with store.connection() as db:
             db.execute("INSERT INTO members VALUES ('outsider', 'other-home', 'Outsider')")
@@ -106,7 +106,7 @@ def test_gemini_capture_is_private_validated_and_idempotent(tmp_path, monkeypatc
         return [Detection(label="Red notebook", appearance="A small red notebook", location="On the table", bbox=[.1, .2, .4, .5])]
 
     monkeypatch.setattr("commonplace_api.main.detect", fake_detect)
-    settings = Settings(data_dir=tmp_path, vision_provider="gemini", gemini_api_key="test", gemini_model="test-model")
+    settings = Settings(seed_sample_data=True, data_dir=tmp_path, vision_provider="gemini", gemini_api_key="test", gemini_model="test-model")
     with TestClient(create_app(settings)) as client:
         headers = login(client)
         data = {"room": "Office", "request_id": "same-capture-id"}
@@ -129,7 +129,7 @@ def test_invalid_and_oversized_uploads_fail_before_vision(tmp_path, monkeypatch)
         raise AssertionError("Invalid images must not reach the model")
 
     monkeypatch.setattr("commonplace_api.main.detect", must_not_call)
-    settings = Settings(data_dir=tmp_path, vision_provider="gemini", gemini_api_key="test", gemini_model="test", max_upload_bytes=1000)
+    settings = Settings(seed_sample_data=True, data_dir=tmp_path, vision_provider="gemini", gemini_api_key="test", gemini_model="test", max_upload_bytes=1000)
     with TestClient(create_app(settings)) as client:
         headers = login(client)
         data = {"room": "Office", "request_id": "capture-1234"}
@@ -159,7 +159,7 @@ def test_older_observation_does_not_replace_latest(tmp_path):
 
 def test_demo_auth_cannot_start_as_production(tmp_path):
     with pytest.raises(RuntimeError, match="Production auth"):
-        create_app(Settings(data_dir=tmp_path, app_env="production"))
+        create_app(Settings(seed_sample_data=True, data_dir=tmp_path, app_env="production"))
 
 
 def test_blank_notes_and_bad_boxes_are_rejected(client):

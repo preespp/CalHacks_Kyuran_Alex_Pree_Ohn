@@ -68,6 +68,7 @@ class ObservationResponse(BaseModel):
     kind: Literal["seen", "moved", "found", "correction"]
     observed_at: str
     label: Optional[str] = None
+    spatial: Optional[dict] = None
 
 
 class ObjectResponse(BaseModel):

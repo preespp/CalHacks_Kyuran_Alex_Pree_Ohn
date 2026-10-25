@@ -75,7 +75,7 @@ def test_camera_upload_updates_database_seen_by_another_guest(tmp_path, monkeypa
         calls.append(room)
         return [detection("On the desk" if len(calls) == 1 else "On the shelf")]
     monkeypatch.setattr("commonplace_api.main.detect", fake_detect)
-    settings = Settings(data_dir=tmp_path, vision_provider="gemini", gemini_vision_api_key="mock", gemini_model="mock")
+    settings = Settings(seed_sample_data=True, data_dir=tmp_path, vision_provider="gemini", gemini_vision_api_key="mock", gemini_model="mock")
     raw = io.BytesIO()
     Image.new("RGB", (100, 80), "red").save(raw, format="JPEG")
     with TestClient(create_app(settings)) as client:

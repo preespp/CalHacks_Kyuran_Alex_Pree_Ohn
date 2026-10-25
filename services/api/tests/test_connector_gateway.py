@@ -56,7 +56,7 @@ def test_gateway_reads_real_backend_state_after_another_members_update(tmp_path)
     from commonplace_api.config import Settings
     from commonplace_api.main import create_app
 
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as backend:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as backend:
         token = backend.post("/api/demo/session", json={"profile": "pree"}).json()["token"]
         alex = backend.post("/api/demo/session", json={"profile": "alex"}).json()["token"]
 

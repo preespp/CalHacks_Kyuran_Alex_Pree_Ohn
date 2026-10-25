@@ -10,7 +10,7 @@ export interface Session {
 export interface Health {
   vision_provider: 'demo' | 'gemini';
   assistant_provider: 'disabled' | 'gemini' | 'muse';
-  storage_provider: 'local' | 'azure';
+  storage_provider: 'local';
   memory_provider: string;
   auth_mode: string;
   sync_mode: string;

@@ -21,4 +21,4 @@ check:
 	$(MAKE) test
 
 test:
-	APP_ENV=development GUEST_PROFILE_STORE=local CAMERA_FRAME_SINK=disabled ASSISTANT_PROVIDER=disabled VISION_PROVIDER=demo STORAGE_PROVIDER=local .venv/bin/python -m pytest services/api/tests -q
+	MEMORY_PROVIDER=sqlite SEED_SAMPLE_DATA=false APP_ENV=development GUEST_PROFILE_STORE=local CAMERA_FRAME_SINK=disabled ASSISTANT_PROVIDER=disabled VISION_PROVIDER=demo STORAGE_PROVIDER=local .venv/bin/python -m pytest services/api/tests -q

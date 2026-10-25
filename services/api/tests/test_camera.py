@@ -54,7 +54,7 @@ def test_preview_needs_session_but_no_models_or_memory_writes(tmp_path, monkeypa
     def no_model(*args, **kwargs):
         raise AssertionError("Camera preview must not call a model")
     monkeypatch.setattr("commonplace_api.main.detect", no_model)
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as client:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as client:
         token = client.post("/api/guest/session", json={"name": "Camera tester"}).json()["token"]
         headers = {"Authorization": f"Bearer {token}"}
         before = client.get("/api/objects", headers=headers).json()
@@ -73,7 +73,7 @@ def test_preview_needs_session_but_no_models_or_memory_writes(tmp_path, monkeypa
 
 
 def test_preview_rejects_oversized_frames_before_decode(tmp_path):
-    with TestClient(create_app(Settings(data_dir=tmp_path, max_upload_bytes=100))) as client:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path, max_upload_bytes=100))) as client:
         token = client.post("/api/guest/session", json={"name": "Camera tester"}).json()["token"]
         response = client.post("/api/camera/frames", headers={"Authorization": f"Bearer {token}"},
                                data={"scan_id": "camera-run-1"}, files={"image": ("frame.jpg", b"x" * 101, "image/jpeg")})

@@ -16,7 +16,7 @@ def login(client, profile="pree"):
 
 @pytest.fixture
 def assistant_client(tmp_path):
-    settings = Settings(data_dir=tmp_path, assistant_provider="gemini", gemini_api_key="legacy-key-must-not-be-used",
+    settings = Settings(seed_sample_data=True, data_dir=tmp_path, assistant_provider="gemini", gemini_api_key="legacy-key-must-not-be-used",
                         gemini_chat_api_key="test-secret", gemini_vision_api_key="vision-key-must-not-be-used", gemini_chat_model="test-chat")
     with TestClient(create_app(settings)) as client:
         yield client
@@ -54,7 +54,7 @@ def stub_model(monkeypatch, query="HDMI adapter", first=None, status=200):
 
 def test_chat_requires_authentication_and_explicit_enablement(tmp_path, monkeypatch):
     requests = stub_model(monkeypatch)
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as client:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as client:
         assert client.post("/api/chat", json={"message": "adapter"}).status_code == 401
         response = client.post("/api/chat", headers=login(client), json={"message": "adapter"})
         assert response.status_code == 409
@@ -160,6 +160,6 @@ def test_empty_truncated_or_ungrounded_output_is_not_an_answer(assistant_client,
 
 def test_gemini_configuration_is_validated(tmp_path):
     with pytest.raises(RuntimeError, match="Gemini assistant requires"):
-        Settings(data_dir=tmp_path, assistant_provider="gemini").validate()
+        Settings(seed_sample_data=True, data_dir=tmp_path, assistant_provider="gemini").validate()
     with pytest.raises(RuntimeError, match="GEMINI_CHAT_MODEL"):
-        Settings(data_dir=tmp_path, gemini_chat_model="models/not-a-model-id").validate()
+        Settings(seed_sample_data=True, data_dir=tmp_path, gemini_chat_model="models/not-a-model-id").validate()

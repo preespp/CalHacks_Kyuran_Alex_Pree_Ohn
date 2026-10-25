@@ -22,6 +22,8 @@ export default defineConfig({
         APP_ENV: 'prototype',
         GUEST_PROFILE_STORE: 'local',
         CAMERA_FRAME_SINK: 'disabled',
+        MEMORY_PROVIDER: 'sqlite',
+        SEED_SAMPLE_DATA: 'true',
       },
       reuseExistingServer: false,
     },

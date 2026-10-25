@@ -1,4 +1,6 @@
-# Add guest profiles to the existing team database
+# Alternative: add a separate guest-profile table
+
+For the current merged project, use the existing `user` table directly as described in [saved-user setup](../../docs/USERS.md). No schema publication is needed for that path. This document describes an optional separate-table approach; set `SPACETIMEDB_PROFILE_TABLE=guest_profile` when choosing it.
 
 If you are using your own newly created users-only database, follow the [separate public registry guide](../users/README.md) instead. That guide covers republishing its earlier private version and configuring public access. The instructions below apply to merging into your teammate's existing module source.
 
@@ -18,7 +20,7 @@ spacetime dev home-object-finder-i72wg --template chat-react-ts --server mainclo
 
 initializes a template project and starts a development workflow that rebuilds and publishes changes automatically. The database name is its publish target. It does **not** retrieve the original deployed source. Do not use it as a shortcut for editing your friend's existing database.
 
-Public tables can be read at runtime without the friend's login credentials, but publishing schema changes still requires the team's database-management access. You do not need their personal login token in this app or in Azure.
+Public tables can be read at runtime without the friend's login credentials, but publishing schema changes still requires the team's database-management access. You do not need their personal login token in this app or in Vultr.
 
 ## 2. Merge the addition into that source
 
@@ -67,12 +69,13 @@ Set these in the repository-root `.env`, then restart `make api`:
 ```dotenv
 GUEST_PROFILE_STORE=spacetimedb
 SPACETIMEDB_PROFILE_ACCESS=public
+SPACETIMEDB_PROFILE_TABLE=guest_profile
 SPACETIMEDB_URL=https://maincloud.spacetimedb.com
 SPACETIMEDB_DATABASE=home-object-finder-i72wg
 SPACETIMEDB_SERVER_TOKEN=
 ```
 
-This backend mode omits the SpacetimeDB Authorization header, even if another server token is configured. The runtime needs no SpacetimeDB CLI. For Azure, set the same ordinary environment variables on the backend; keep Meta/Gemini keys in backend secrets as before. These settings connect **only the saved-user registry**. Object memory, images, and session hashes retain their existing storage configuration.
+This backend mode omits the SpacetimeDB Authorization header, even if another server token is configured. The runtime needs no SpacetimeDB CLI. For Vultr, set the same ordinary environment variables on the backend; keep Meta/Gemini keys in backend secrets as before. These settings connect **only the saved-user registry**. Object memory, images, and session hashes retain their existing storage configuration.
 
 Until publication is complete, leave `GUEST_PROFILE_STORE=auto` with `SPACETIMEDB_PROFILE_ACCESS=private` and no server token, or explicitly use `GUEST_PROFILE_STORE=local`. These modes keep temporary selectable users that reset when the API restarts. Setting `public` against a database without the required table produces a visible setup error; it does not create the table automatically.
 

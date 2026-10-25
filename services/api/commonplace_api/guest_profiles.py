@@ -1,9 +1,14 @@
 """Selectable prototype profiles. Image/object storage and sessions remain separate."""
+import hashlib
 import re
 from threading import Lock
 from uuid import uuid4
 
 import httpx
+from websockets.sync.client import connect
+from websockets.exceptions import WebSocketException
+
+from camera_capture.spacetime_wire import Reader, BsatnError
 
 from .config import Settings
 from .store import Store
@@ -63,6 +68,7 @@ class SpacetimeProfiles(Profiles):
     def __init__(self, settings):
         self.url = settings.spacetime_url.rstrip("/") + "/v1/database/" + settings.spacetime_database
         self.token = settings.spacetime_token if settings.spacetime_profile_access == "private" else ""
+        self.contract = "user and set_name" if settings.spacetime_profile_table == "user" else "guest_profile and create_guest_profile"
         self.startup_error = ""
 
     def request(self, method, path, **kwargs):
@@ -78,7 +84,7 @@ class SpacetimeProfiles(Profiles):
             if response.status_code == 404 and path == "":
                 raise DatabaseMissing("The configured user database does not exist yet.")
             if not response.is_success:
-                raise ProfileError("Cannot access the SpacetimeDB user registry. Check profile access mode, table visibility, guest_profile and create_guest_profile; private mode also requires the server token. Restart the API after correcting setup.")
+                raise ProfileError(f"Cannot access the SpacetimeDB user registry. Check profile access mode, table visibility, {self.contract}; private mode also requires the server token. Restart the API after correcting setup.")
             return response
         except httpx.RequestError:
             raise ProfileError("Cannot reach the SpacetimeDB user registry. Retry when the database is available.") from None
@@ -105,13 +111,80 @@ class SpacetimeProfiles(Profiles):
         self.request("POST", "/call/create_guest_profile", json=[profile["id"], profile["name"]])
 
 
+class SpacetimeUsers(SpacetimeProfiles):
+    """Use the team's existing public chat user table without changing its module.
+
+    Each new guest gets a fresh anonymous database identity, never the shared
+    uploader/owner identity. Existing user rows are only read, never renamed.
+    The temporary identity token is discarded after set_name completes.
+    """
+    notice = "Your household's saved names are available on every device."
+
+    @staticmethod
+    def profile(identity, name):
+        identity = identity.removeprefix("0x").lower()
+        if not re.fullmatch(r"[a-f0-9]{64}", identity):
+            raise ValueError("Invalid identity")
+        return {"id": "guest-" + hashlib.sha256(bytes.fromhex(identity)).hexdigest()[:32],
+                "household_id": "demo-home", "name": name}
+
+    def list(self):
+        response = self.request("POST", "/sql", content="SELECT identity, name FROM user")
+        try:
+            profiles = []
+            for identity, optional_name in response.json()[0]["rows"]:
+                # SATS JSON: Identity is ["0x..."], Option<string> is [0, name]
+                # or [1, []]. Unnamed chat connections aren't selectable guests.
+                tag, name = optional_name
+                if tag == 1:
+                    continue
+                if tag != 0 or not isinstance(name, str):
+                    raise ValueError("Invalid optional name")
+                if not name.strip() or len(name) > 50 or any(ord(c) < 32 or ord(c) == 127 for c in name):
+                    continue
+                profiles.append(self.profile(identity[0], name))
+            return sorted(profiles, key=lambda row: (row["name"].casefold(), row["id"]))
+        except (ValueError, KeyError, TypeError, IndexError, AttributeError):
+            raise ProfileError("The shared user table has an incompatible format. Expected identity, optional name and online fields.") from None
+
+    def create(self, name):
+        if self.startup_error:
+            raise ProfileError(self.startup_error)
+        url = self.url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+        try:
+            # Opening this anonymous connection runs the module's on_connect,
+            # which inserts a new user. REST calls alone don't run that hook.
+            with connect(url + "/subscribe?compression=None", subprotocols=["v3.bsatn.spacetimedb"],
+                         compression=None, proxy=None, open_timeout=10, close_timeout=2, max_size=65536) as ws:
+                data = ws.recv(timeout=10)
+                if not isinstance(data, bytes):
+                    raise ValueError("Expected BSATN welcome")
+                reader = Reader(data)
+                if reader.u8() != 0 or reader.u8() != 0:
+                    raise ValueError("Expected initial connection")
+                identity = reader.take(32)[::-1].hex()
+                reader.take(16)  # ConnectionId
+                token = reader.string()
+                with httpx.Client(timeout=10, follow_redirects=False) as client:
+                    result = client.post(self.url + "/call/set_name", json=[name],
+                                         headers={"Authorization": f"Bearer {token}"})
+                if not result.is_success:
+                    raise ProfileError("Your name could not be saved to the shared user table. Please retry.")
+                profile = self.profile(identity, name)
+                if self.get(profile["id"]) != profile:
+                    raise ProfileError("Your saved name could not be confirmed. Refresh the user list before trying again.")
+                return profile
+        except (WebSocketException, OSError, TimeoutError, httpx.RequestError, BsatnError, ValueError):
+            raise ProfileError("The shared user service could not be reached. Refresh the user list and try again.") from None
+
+
 def create_profiles(settings: Settings, store: Store):
     mode = settings.guest_profile_store
     if mode == "sqlite":
         return SqliteProfiles(store)
     if mode == "local" or (mode == "auto" and not settings.spacetime_token and settings.spacetime_profile_access != "public"):
         return Profiles()
-    remote = SpacetimeProfiles(settings)
+    remote = (SpacetimeUsers if settings.spacetime_profile_table == "user" else SpacetimeProfiles)(settings)
     try:
         remote.request("GET", "")
     except DatabaseMissing:

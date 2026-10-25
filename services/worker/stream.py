@@ -322,14 +322,13 @@ class RealtimeStreamEngine:
             obj_rels = relations_map.get(i, [])
             sight_id = f"sight_{secrets.token_hex(3)}"
             
-            # Approximate metric physical distance in meters (0.5m ~ 3.5m)
-            dist_m = round(0.5 + (1.0 - trk.depth) * 3.0, 2)
+            # Monocular relative depth has no calibrated metric scale.
 
             rel_text = ""
             if obj_rels:
                 rel_text = f", {obj_rels[0]['type'].replace('_', ' ')} the {obj_rels[0]['target_label']}"
 
-            summary = f"In the {self.room}{rel_text}, approximately {dist_m}m from camera ({h_zone(trk.bbox)} side)."
+            summary = f"In the {self.room}{rel_text}, {h_zone(trk.bbox)} side of this photo (relative depth rank {rank})."
 
             sighting = {
                 "sighting_id": sight_id,
@@ -342,7 +341,6 @@ class RealtimeStreamEngine:
                     "v_zone": v_zone(trk.bbox),
                     "depth_value": round(trk.depth, 3),
                     "depth_rank": rank,
-                    "distance_meters": dist_m,
                 },
                 "relations": obj_rels,
             }
@@ -350,11 +348,10 @@ class RealtimeStreamEngine:
                 "room": self.room,
                 "summary": summary,
                 "sighting_id": sight_id,
-                "distance_meters": dist_m,
             }
             obj.sightings.append(sighting)
             obj.updated_at = now_str
-            sighting_records.append({"label": trk.label, "dist_m": dist_m, "bbox": trk.bbox})
+            sighting_records.append({"label": trk.label, "depth_rank": rank, "bbox": trk.bbox})
         lat.memory_ms = (time.perf_counter() - t0) * 1000
 
         # 6. Dispatch Asynchronous Keyframe Discovery (Non-blocking!)

@@ -78,6 +78,42 @@ function cameraState(page: Page) {
   );
 }
 
+test('the last uploaded frame reports memory completion before another capture', async ({
+  page,
+}) => {
+  let frames = 0;
+  await page.route('**/api/camera/frames', (route) => route.fulfill({ json: stats(++frames) }));
+  await page.route('**/api/camera/streams/*', (route) =>
+    route.request().method() === 'DELETE'
+      ? route.fulfill({ status: 204 })
+      : route.fulfill({ json: stats(1, 1).analysis }),
+  );
+  await prepare(page);
+  await openCamera(page);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
+  await page.getByRole('button', { name: 'Start scanning', exact: true }).click();
+  await expect.poll(() => frames).toBe(1);
+  await page.clock.runFor(1600);
+  await expect(
+    page.getByText('Updated 1 visible object in shared memory.', { exact: true }),
+  ).toBeVisible();
+  expect(frames).toBe(1);
+  await page.getByRole('button', { name: 'Stop scanning', exact: true }).click();
+});
+
+test('an empty live household offers scanning without seeded objects or suggested sample names', async ({
+  page,
+}) => {
+  await page.route('**/api/objects?*', (route) => route.fulfill({ json: { objects: [] } }));
+  await page.route('**/api/activity', (route) => route.fulfill({ json: { events: [] } }));
+  await page.goto('/');
+  await joinAsGuest(page, 'Live household');
+  await expect(page.getByRole('heading', { name: 'No items remembered yet.' })).toBeVisible();
+  await expect(page.locator('.object-card')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'House keys', exact: true })).toHaveCount(0);
+});
+
 for (const seconds of [3, 4, 5]) {
   test(`camera captures every ${seconds} seconds and defaults to five`, async ({ page }) => {
     const bodies: string[] = [];

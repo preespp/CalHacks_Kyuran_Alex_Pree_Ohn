@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "npm run dev --workspace @commonplace/web",
     "build": "npm run build --workspace @commonplace/web",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit --project camera_capture/stream_module/tsconfig.json",
     "check": "npm run typecheck && npm run build",
     "test:module": "vitest run --root spacetimedb --config vitest.config.ts",
     "test:browser": "playwright test",

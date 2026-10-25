@@ -81,7 +81,7 @@ async def tool_check(settings: Settings) -> int:
         return 1
     print("PASS: Gemini requested search_household_memory and answered from the synthetic result.")
     print("Synthetic evidence: Test teammate reported the test keys in the green test box, Kitchen.")
-    print("No database, web app, photograph, vision key, Azure, or SpacetimeDB was used. Voice was not tested.")
+    print("No database, web app, photograph, vision key, Vultr, or SpacetimeDB was used. Voice was not tested.")
     return 0
 
 

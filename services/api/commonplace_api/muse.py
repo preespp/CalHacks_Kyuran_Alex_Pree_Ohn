@@ -64,7 +64,7 @@ async def memory_reply(settings: Settings, body: ChatRequest, search: Callable[[
         total = len(result["matches"])
         matches = [ObjectResponse.model_validate(item) for item in result["matches"][:8]]
         if not total:
-            answer = "No stored observation matches that search. Try another object name or add an observation."
+            answer = "No stored observation matches that search. Try another object name or scan your room."
         elif total > 1:
             answer = f"I found {total} matching objects. Which one do you mean? Choose a record below or describe its appearance."
         else:

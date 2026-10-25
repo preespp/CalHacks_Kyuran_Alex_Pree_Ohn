@@ -10,7 +10,7 @@ from commonplace_api.store import Store
 
 @pytest.fixture
 def client(tmp_path):
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as client:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as client:
         yield client
 
 
@@ -72,9 +72,9 @@ def test_switching_and_leaving_revoke_only_the_current_session(client):
 
 
 def test_guest_session_survives_api_restart(tmp_path):
-    with TestClient(create_app(Settings(data_dir=tmp_path, guest_profile_store="sqlite"))) as first:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path, guest_profile_store="sqlite"))) as first:
         guest = join(first, "Guest tester")
-    with TestClient(create_app(Settings(data_dir=tmp_path, guest_profile_store="sqlite"))) as second:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path, guest_profile_store="sqlite"))) as second:
         assert second.get("/api/me", headers=headers(guest)).json()["name"] == "Guest tester"
         assert second.get("/api/guest/users").json()["users"] == [guest["member"]]
 
@@ -96,11 +96,11 @@ def test_select_saved_user_restores_identity_without_restoring_old_session(clien
 
 
 def test_temporary_users_reset_on_restart_without_erasing_shared_object_history(tmp_path):
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as first:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as first:
         guest = join(first, "Temporary tester")
         first.post("/api/objects/keys/notes", headers=headers(guest),
                    json={"room": "Kitchen", "location": "Keep this evidence", "kind": "moved"})
-    with TestClient(create_app(Settings(data_dir=tmp_path))) as second:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path))) as second:
         assert second.get("/api/guest/users").json()["users"] == []
         assert second.get("/api/me", headers=headers(guest)).status_code == 401
         visitor = join(second, "Next tester")
@@ -118,7 +118,7 @@ def test_missing_or_invalid_saved_user_never_creates_an_identity(client):
 
 
 def test_prototype_mode_uses_guests_and_disables_fixed_identity_selection(tmp_path):
-    with TestClient(create_app(Settings(data_dir=tmp_path, app_env="prototype"))) as client:
+    with TestClient(create_app(Settings(seed_sample_data=True, data_dir=tmp_path, app_env="prototype"))) as client:
         assert client.get("/api/health").json()["auth_mode"] == "guest"
         assert client.post("/api/demo/session", json={"profile": "pree"}).status_code == 404
         guest = join(client, "Prototype visitor")

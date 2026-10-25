@@ -46,6 +46,7 @@ Edit these settings in the existing repository-root `.env`, preserving Meta/Gemi
 ```dotenv
 GUEST_PROFILE_STORE=spacetimedb
 SPACETIMEDB_PROFILE_ACCESS=public
+SPACETIMEDB_PROFILE_TABLE=guest_profile
 SPACETIMEDB_URL=https://maincloud.spacetimedb.com
 SPACETIMEDB_DATABASE=YOUR_USERS_DATABASE_ID
 SPACETIMEDB_SERVER_TOKEN=
@@ -82,9 +83,9 @@ No manual row insertion is needed. The UI's new-user form creates records throug
 
 If setup fails, check the database ID, whether the updated module was published, and whether you restarted the API. A missing table or denied reducer produces a visible error rather than an empty temporary directory. For temporary testing without the registry, set `GUEST_PROFILE_STORE=local`; selectable users then reset on API restart.
 
-## Azure
+## Vultr
 
-Set the same five registry variables on the Azure backend. No SpacetimeDB runtime token or CLI installation is needed for this public registry. Keep Meta/Gemini keys and other services' credentials in backend secrets. Azure's object/image/session persistence remains a separate integration.
+Set the same five registry variables on the Vultr backend. No SpacetimeDB runtime token or CLI installation is needed for this public registry. Keep Meta/Gemini keys and other services' credentials in backend secrets. Vultr's object/image/session persistence remains a separate integration.
 
 ## Verification
 

@@ -95,7 +95,7 @@ def create_object(
     owner: Optional[str] = None,
 ) -> TrackedObject:
     """Instantiates a new unique tracked household object."""
-    obj_id = f"obj_{secrets.token_hex(3)}"
+    obj_id = f"obj_{secrets.token_hex(12)}"
     return TrackedObject(
         object_id=obj_id,
         label=label,

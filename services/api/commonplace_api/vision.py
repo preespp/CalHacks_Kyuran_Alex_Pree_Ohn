@@ -27,7 +27,7 @@ class GeminiResponse(BaseModel):
     objects: list[GeminiObject] = Field(max_length=30)
 
 
-def normalize_image(raw: bytes) -> bytes:
+def normalize_image(raw: bytes, *, max_dimension: int = 2048, max_bytes: int | None = None) -> bytes:
     """Validate the actual image, apply EXIF rotation, remove metadata, cap dimensions."""
     try:
         with Image.open(io.BytesIO(raw)) as image:
@@ -36,10 +36,16 @@ def normalize_image(raw: bytes) -> bytes:
             if image.width * image.height > Image.MAX_IMAGE_PIXELS:
                 raise ValueError("Image must contain at most 20 megapixels")
             normalized = ImageOps.exif_transpose(image).convert("RGB")
-            normalized.thumbnail((2048, 2048))
-            result = io.BytesIO()
-            normalized.save(result, format="JPEG", quality=85)
-            return result.getvalue()
+            normalized.thumbnail((max_dimension, max_dimension))
+            while True:
+                for quality in (85, 75, 65, 55, 45):
+                    result = io.BytesIO()
+                    normalized.save(result, format="JPEG", quality=quality)
+                    if max_bytes is None or result.tell() <= max_bytes:
+                        return result.getvalue()
+                # Very detailed images may exceed the queue limit even at lower quality.
+                normalized.thumbnail((max(1, normalized.width * 4 // 5),
+                                      max(1, normalized.height * 4 // 5)))
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
         raise ValueError("Cannot read this image. Use a JPEG, PNG, or WebP image under 20 megapixels.") from error
 

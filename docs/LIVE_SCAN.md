@@ -4,7 +4,7 @@ The household remembers where objects were last seen, with images, boxes, rooms,
 
 ## Persistent camera and voice
 
-See [the assistance-session guide](ASSISTANCE_SESSION.md) for the current architecture, defaults, capture and analysis timing, Hello greeting, browser limits, and SpacetimeDB/Azure setup.
+See [the assistance-session guide](ASSISTANCE_SESSION.md) for the current architecture, defaults, capture and analysis timing, Hello greeting, browser limits, and SpacetimeDB/Vultr setup.
 
 Camera and Muse stay mounted across household screens. Camera defaults to enabled and captures every **5 seconds by default**, selectable 3/4/5 seconds; Hello listening defaults to enabled when supported and Muse is configured. Browser permissions can require a Start/Turn on tap. Use the same on/off controls from Camera, Ask Muse, or the compact status panel. Hiding/leaving the website still stops capture and listening.
 
@@ -25,7 +25,7 @@ JPEGs fit inside 1280×720; quality defaults to 78%, configurable 30–95%. Comp
 
 ## Association and coordinates
 
-The prototype reuses an object ID only for an exact normalized room, label, and nonempty appearance that occurs once in both adjacent processed frames, in the same household/scan, with a positive time gap no greater than 60 seconds.
+In the remote Onyu path, geometry mode reuses an ID only for a unique, exact label and nonempty appearance match among the room's saved objects. Models mode uses SigLIP candidate matching. In the legacy local SQLite path, association is limited to adjacent observations in the same scan within 60 seconds.
 
 This is provisional association, not verified physical identity. Similar objects can be confused; Gemini descriptions can vary. A new scan/room, missing intermediate detection, changed description, or ambiguity creates new candidate IDs. An empty frame retains older last-seen records and does not prove removal. Muse asks for clarification when candidates overlap. Reliable cross-scan/cross-camera identity remains a separate implementation step.
 
@@ -33,9 +33,9 @@ Boxes are normalized `[xmin, ymin, xmax, ymax]` values from 0 to 1 on the saved 
 
 ## Storage and attribution
 
-The running API writes observations to **SQLite** (`DATA_DIR/memory.sqlite3`), with local images or the configured Azure image adapter. The optional SpacetimeDB guest registry stores profiles only; it does not automatically receive object observations.
+MEMORY_PROVIDER=spacetimedb writes live observations and retained photo evidence to the published team tables. MEMORY_PROVIDER=sqlite keeps the legacy local store (`DATA_DIR/memory.sqlite3`) and local images. See [the connected workflow](LIVE_WORKFLOW.md). The optional SpacetimeDB guest registry stores profiles only; it does not automatically receive object observations.
 
-For your teammate's database, agree on object IDs, observation fields, box format, image references, timestamps, household permissions, and upsert rules. Replace the API's object-store adapter and persist scan association there; connect worker permissions/subscriptions for the cloud design. A database URL alone does not migrate data. Coordinate schema changes before publishing over their module.
+The live schema and object adapter are now connected; the team module publishes vision_capture, object_memory and object_sighting plus an atomic commit reducer. A database URL alone still does not select that adapter: set MEMORY_PROVIDER=spacetimedb. Browser subscriptions and durable leased jobs remain future work.
 
 New observations store no contributor. Memory, history, activity, and assistant/connector results omit actor IDs/names, including for legacy records. Legacy SQLite actor columns and old row values remain internally for compatibility; this change does not erase historical attribution. The separate SpacetimeDB module leaves its optional legacy actor field unset. Profile/session storage remains separate for authorization and switching users.
 

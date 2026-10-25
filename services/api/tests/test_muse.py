@@ -12,7 +12,7 @@ from commonplace_api.voice import MAX_AUDIO_BYTES
 
 
 def settings(tmp_path):
-    return Settings(data_dir=tmp_path, assistant_provider="muse", meta_api_key="mock-meta-secret", meta_model="muse-test")
+    return Settings(seed_sample_data=True, data_dir=tmp_path, assistant_provider="muse", meta_api_key="mock-meta-secret", meta_model="muse-test")
 
 
 def completed(text):

@@ -76,7 +76,7 @@ def test_frame_ingestion_returns_before_backend_analysis_and_commits_shared_memo
         await asyncio.sleep(.05)
         return [Detection(label='Cup', appearance='A red cup with a star', location='On the desk', bbox=[.1, .2, .5, .6])]
     monkeypatch.setattr('commonplace_api.main.detect', detect)
-    settings = Settings(data_dir=tmp_path, vision_provider='gemini', gemini_vision_api_key='mock', gemini_model='mock')
+    settings = Settings(seed_sample_data=True, data_dir=tmp_path, vision_provider='gemini', gemini_vision_api_key='mock', gemini_model='mock')
     image = io.BytesIO()
     Image.new('RGB', (100, 80), 'red').save(image, format='JPEG')
     with TestClient(create_app(settings)) as client:

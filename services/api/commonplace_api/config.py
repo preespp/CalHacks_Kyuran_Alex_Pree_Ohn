@@ -24,8 +24,6 @@ class Settings:
     meta_api_key: str = ""
     meta_model: str = ""
     meta_voice_model: str = "muse-voice-transcribe-1.0"
-    azure_account_url: str = ""
-    azure_container: str = "scene-images"
     max_upload_bytes: int = 8 * 1024 * 1024
     cors_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173")
     app_env: str = "development"
@@ -34,10 +32,14 @@ class Settings:
     spacetime_database: str = ""
     spacetime_token: str = ""
     spacetime_profile_access: str = "private"
+    spacetime_profile_table: str = "guest_profile"
     camera_frame_sink: str = "disabled"
     camera_spacetime_url: str = ""
     camera_spacetime_database: str = ""
     camera_spacetime_token: str = ""
+    memory_provider: str = "sqlite"
+    seed_sample_data: bool = False
+    vision_enrichment: str = "geometry"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -55,8 +57,6 @@ class Settings:
             meta_api_key=os.getenv("MODEL_API_KEY", ""),
             meta_model=os.getenv("META_MODEL", ""),
             meta_voice_model=os.getenv("META_VOICE_MODEL", "muse-voice-transcribe-1.0"),
-            azure_account_url=os.getenv("AZURE_STORAGE_ACCOUNT_URL", ""),
-            azure_container=os.getenv("AZURE_STORAGE_CONTAINER", "scene-images"),
             max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024))),
             cors_origins=tuple(x.strip() for x in os.getenv(
                 "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
@@ -67,10 +67,14 @@ class Settings:
             spacetime_database=os.getenv("SPACETIMEDB_DATABASE", ""),
             spacetime_token=os.getenv("SPACETIMEDB_SERVER_TOKEN", ""),
             spacetime_profile_access=os.getenv("SPACETIMEDB_PROFILE_ACCESS", "private"),
+            spacetime_profile_table=os.getenv("SPACETIMEDB_PROFILE_TABLE", "guest_profile"),
             camera_frame_sink=os.getenv("CAMERA_FRAME_SINK", "disabled"),
             camera_spacetime_url=os.getenv("CAMERA_SPACETIMEDB_URL", ""),
             camera_spacetime_database=os.getenv("CAMERA_SPACETIMEDB_DATABASE", ""),
             camera_spacetime_token=os.getenv("CAMERA_SPACETIMEDB_TOKEN", ""),
+            memory_provider=os.getenv("MEMORY_PROVIDER", "sqlite"),
+            seed_sample_data=os.getenv("SEED_SAMPLE_DATA", "false").lower() == "true",
+            vision_enrichment=os.getenv("VISION_ENRICHMENT", "geometry"),
         )
 
     @property
@@ -82,6 +86,12 @@ class Settings:
         return self.gemini_vision_api_key or self.gemini_api_key
 
     def validate(self) -> None:
+        if self.memory_provider not in {"sqlite", "spacetimedb"}:
+            raise RuntimeError("MEMORY_PROVIDER must be sqlite or spacetimedb")
+        if self.memory_provider == "spacetimedb" and self.camera_frame_sink != "spacetimedb":
+            raise RuntimeError("SpacetimeDB memory requires CAMERA_FRAME_SINK=spacetimedb")
+        if self.vision_enrichment not in {"geometry", "models"}:
+            raise RuntimeError("VISION_ENRICHMENT must be geometry or models")
         if self.camera_frame_sink not in {"disabled", "spacetimedb"}:
             raise RuntimeError("CAMERA_FRAME_SINK must be disabled or spacetimedb")
         if self.camera_frame_sink == "spacetimedb":
@@ -97,6 +107,10 @@ class Settings:
             raise RuntimeError("GUEST_PROFILE_STORE must be auto, local, sqlite, or spacetimedb")
         if self.spacetime_profile_access not in {"private", "public"}:
             raise RuntimeError("SPACETIMEDB_PROFILE_ACCESS must be private or public")
+        if self.spacetime_profile_table not in {"guest_profile", "user"}:
+            raise RuntimeError("SPACETIMEDB_PROFILE_TABLE must be guest_profile or user")
+        if self.spacetime_profile_table == "user" and self.spacetime_profile_access != "public":
+            raise RuntimeError("The existing user table adapter requires SPACETIMEDB_PROFILE_ACCESS=public")
         if self.guest_profile_store == "spacetimedb" or (self.guest_profile_store == "auto" and (self.spacetime_token or self.spacetime_profile_access == "public")):
             url = urlsplit(self.spacetime_url)
             if (url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password
@@ -124,10 +138,8 @@ class Settings:
             raise RuntimeError("GEMINI_MODEL must be a model ID without a URL or models/ prefix")
         if self.gemini_chat_model and not re.fullmatch(r"[A-Za-z0-9._-]+", self.gemini_chat_model):
             raise RuntimeError("GEMINI_CHAT_MODEL must be a model ID without a URL or models/ prefix")
-        if self.storage_provider not in {"local", "azure"}:
-            raise RuntimeError("STORAGE_PROVIDER must be local or azure")
-        if self.storage_provider == "azure" and not self.azure_account_url:
-            raise RuntimeError("Azure storage requires AZURE_STORAGE_ACCOUNT_URL")
+        if self.storage_provider != "local":
+            raise RuntimeError("STORAGE_PROVIDER must be local; use a persistent DATA_DIR on the host")
         if not 0 < self.max_upload_bytes <= 20 * 1024 * 1024:
             raise RuntimeError("MAX_UPLOAD_BYTES must be between 1 and 20971520")
 

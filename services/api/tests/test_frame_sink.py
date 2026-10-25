@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 import httpx
 from PIL import Image
 import pytest
+import numpy as np
 
 from commonplace_api.config import Settings
 from commonplace_api.main import create_app
@@ -20,7 +21,7 @@ def jpeg():
 
 
 def settings(tmp_path, **extra):
-    return Settings(data_dir=tmp_path, guest_profile_store='local', camera_frame_sink='spacetimedb',
+    return Settings(seed_sample_data=True, data_dir=tmp_path, guest_profile_store='local', camera_frame_sink='spacetimedb',
                     camera_spacetime_url='https://image-db.example.test', camera_spacetime_database='team-images',
                     spacetime_database='guest-registry', spacetime_token='guest-secret-never-forward', **extra)
 
@@ -70,7 +71,8 @@ def test_camera_uploads_normalized_frames_with_separate_credentials_and_no_model
         assert session == hashlib.sha256(json.dumps(["demo-home", "database-scan-1"]).encode()).hexdigest()[:32]
         assert seq == sequence
         assert isinstance(captured_us, int) and captured_us > 1_000_000_000_000
-        image = Image.open(io.BytesIO(bytes(encoded)))
+        assert isinstance(encoded, str)
+        image = Image.open(io.BytesIO(bytes.fromhex(encoded)))
         assert image.format == 'JPEG' and image.size == (width, height) == (100, 80)
 
 
@@ -103,6 +105,42 @@ def test_uploaded_camera_frame_still_flows_through_gemini_and_retained_evidence(
         assert client.get(item['latest']['image_url'], headers=headers).status_code == 200
 
 
+def test_high_resolution_detailed_camera_frame_fits_deployed_reducer_limits(tmp_path, monkeypatch):
+    raw = io.BytesIO()
+    pixels = np.random.default_rng(42).integers(0, 256, (2100, 2800, 3), dtype=np.uint8)
+    Image.fromarray(pixels).save(raw, 'JPEG', quality=90)
+    received = []
+    def respond(request):
+        session, seq, stamp, width, height, encoded = json.loads(request.content)
+        jpeg_bytes = bytes.fromhex(encoded)
+        assert max(width, height) <= 1920
+        assert len(jpeg_bytes) <= 1048576
+        assert jpeg_bytes.startswith(b'\xff\xd8\xff')
+        assert Image.open(io.BytesIO(jpeg_bytes)).size == (width, height)
+        received.append((width, height))
+        return httpx.Response(200)
+    mock_sink(monkeypatch, respond)
+    with TestClient(create_app(settings(tmp_path))) as client:
+        token = client.post('/api/guest/session', json={'name': 'Camera test'}).json()['token']
+        response = client.post('/api/camera/frames', headers={'Authorization': f'Bearer {token}'},
+                               data={'scan_id': 'detailed-camera-test'},
+                               files={'image': ('frame.jpg', raw.getvalue(), 'image/jpeg')})
+        assert response.status_code == 200, response.text
+        assert received == [(response.json()['quality']['width'], response.json()['quality']['height'])]
+
+
+def test_invalid_jpeg_reducer_error_is_actionable_and_does_not_echo_image(tmp_path, monkeypatch):
+    mock_sink(monkeypatch, lambda request: httpx.Response(530, text='Invalid JPEG frame: private bytes'))
+    with TestClient(create_app(settings(tmp_path))) as client:
+        token = client.post('/api/guest/session', json={'name': 'Camera test'}).json()['token']
+        response = client.post('/api/camera/frames', headers={'Authorization': f'Bearer {token}'},
+                               data={'scan_id': 'invalid-camera-test'},
+                               files={'image': ('frame.jpg', jpeg(), 'image/jpeg')})
+        assert response.status_code == 502
+        assert 'size limits' in response.json()['detail']
+        assert 'private bytes' not in response.text
+
+
 @pytest.mark.parametrize('failure', [401, 403, 404, 500, 530, 302, 'timeout'])
 def test_upload_failures_are_visible_without_model_calls_or_provider_body_leaks(tmp_path, monkeypatch, failure):
     def respond(request):
@@ -133,13 +171,13 @@ def test_upload_failures_are_visible_without_model_calls_or_provider_body_leaks(
 @pytest.mark.parametrize('url', ['http://remote.test', 'https://token:secret@image.test', 'https://image.test/path', 'wss://image.test'])
 def test_image_sink_rejects_unsafe_origins(tmp_path, url):
     with pytest.raises(RuntimeError):
-        Settings(data_dir=tmp_path, camera_frame_sink='spacetimedb', camera_spacetime_url=url,
+        Settings(seed_sample_data=True, data_dir=tmp_path, camera_frame_sink='spacetimedb', camera_spacetime_url=url,
                  camera_spacetime_database='images').validate()
 
 
 def test_image_sink_requires_its_own_database_settings(tmp_path):
     with pytest.raises(RuntimeError, match='CAMERA_SPACETIMEDB_URL'):
-        Settings(data_dir=tmp_path, camera_frame_sink='spacetimedb', spacetime_url='https://guests.test',
+        Settings(seed_sample_data=True, data_dir=tmp_path, camera_frame_sink='spacetimedb', spacetime_url='https://guests.test',
                  spacetime_database='guests', spacetime_token='guest-secret').validate()
 
 

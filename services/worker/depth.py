@@ -7,13 +7,13 @@ import io
 from typing import Optional
 import numpy as np
 from PIL import Image
-import torch
-from transformers import pipeline
 
 _pipe = None
 
 
 def _get_pipe():
+    import torch
+    from transformers import pipeline
     global _pipe
     if _pipe is None:
         device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")

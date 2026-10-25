@@ -1,0 +1,24 @@
+[Unit]
+Description=Commonplace API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=commonplace
+Group=commonplace
+WorkingDirectory=/srv/commonplace/current
+EnvironmentFile=/etc/commonplace/commonplace.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/srv/commonplace/current/.venv/bin/python -m uvicorn commonplace_api.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=65
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/commonplace
+
+[Install]
+WantedBy=multi-user.target

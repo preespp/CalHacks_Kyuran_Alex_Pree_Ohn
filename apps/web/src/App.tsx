@@ -28,7 +28,7 @@ import type { Health, MemoryObject, Observation, Profile, Session } from './type
 
 function loadSession(): Session | null {
   try {
-    const value = JSON.parse(sessionStorage.getItem('commonplace-session') ?? 'null');
+    const value = JSON.parse(sessionStorage.getItem('commonplace-guest-session') ?? 'null');
     return value?.token && value?.member ? value : null;
   } catch {
     return null;
@@ -127,13 +127,13 @@ export default function App() {
   useEffect(() => {
     if (session) return;
     let cancelled = false;
-    api<Session>('/api/demo/session', undefined, {
+    api<Session>('/api/guest/session', undefined, {
       method: 'POST',
-      body: JSON.stringify({ profile: 'alex' }),
+      body: JSON.stringify({ name: 'Pree' }),
     })
       .then((val) => {
         if (!cancelled) {
-          sessionStorage.setItem('commonplace-session', JSON.stringify(val));
+          sessionStorage.setItem('commonplace-guest-session', JSON.stringify(val));
           setSession(val);
         }
       })
@@ -355,18 +355,33 @@ export default function App() {
 
   // Profile switch handler
   async function handleSwitchProfile(profile: Profile) {
+    const profileName = { alex: 'Alex', pree: 'Pree', kyuran: 'Kyuran' }[profile];
     try {
-      const val = await api<Session>('/api/demo/session', undefined, {
+      const val = await api<Session>('/api/guest/session', undefined, {
         method: 'POST',
-        body: JSON.stringify({ profile }),
+        body: JSON.stringify({ name: profileName }),
       });
+      sessionStorage.setItem('commonplace-guest-session', JSON.stringify(val));
       sessionStorage.setItem('commonplace-session', JSON.stringify(val));
       setSession(val);
       setProfileModal(false);
       setRevision((r) => r + 1);
       setToast(`Switched household member to ${val.member.name}`);
-    } catch (err) {
-      console.error('Profile switch error:', err);
+    } catch {
+      try {
+        const val = await api<Session>('/api/demo/session', undefined, {
+          method: 'POST',
+          body: JSON.stringify({ profile }),
+        });
+        sessionStorage.setItem('commonplace-session', JSON.stringify(val));
+        sessionStorage.setItem('commonplace-guest-session', JSON.stringify(val));
+        setSession(val);
+        setProfileModal(false);
+        setRevision((r) => r + 1);
+        setToast(`Switched household member to ${val.member.name}`);
+      } catch (err) {
+        console.error('Profile switch error:', err);
+      }
     }
   }
 
@@ -473,7 +488,7 @@ export default function App() {
           <header className="topbar">
             <div>
               <p className="eyebrow">{currentDate.toUpperCase()}</p>
-              <h1>
+              <h1 aria-label="A home that remembers.">
                 Good memory,{' '}
                 <RotatingText
                   words={[
@@ -491,6 +506,7 @@ export default function App() {
               <label className="search">
                 <Search size={18} />
                 <input
+                  aria-label="Search objects"
                   placeholder="Search your memory"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -501,6 +517,7 @@ export default function App() {
               <button
                 type="button"
                 className="scan-button"
+                aria-label="Scan room"
                 onClick={handleOpenScanModal}
               >
                 <Camera size={18} />
@@ -1206,31 +1223,39 @@ export default function App() {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                          <span
-                            className={`avatar avatar-${event.actor_name.toLowerCase()}`}
-                            style={{
-                              width: 38,
-                              height: 38,
-                              borderRadius: '50%',
-                              background: event.actor_name.toLowerCase().startsWith('a')
-                                ? '#415a4b'
-                                : event.actor_name.toLowerCase().startsWith('p')
-                                  ? '#7d5c41'
-                                  : '#4a5d7c',
-                              color: '#fff',
-                              display: 'grid',
-                              placeItems: 'center',
-                              fontWeight: 700,
-                              fontSize: 14,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {event.actor_name[0]}
-                          </span>
+                          {(() => {
+                            const actor = event.actor_name || 'Household';
+                            const initial = actor[0]?.toUpperCase() || 'H';
+                            const lower = actor.toLowerCase();
+                            const bg = lower.startsWith('a')
+                              ? '#415a4b'
+                              : lower.startsWith('p')
+                                ? '#7d5c41'
+                                : '#4a5d7c';
+                            return (
+                              <span
+                                className={`avatar avatar-${lower}`}
+                                style={{
+                                  width: 38,
+                                  height: 38,
+                                  borderRadius: '50%',
+                                  background: bg,
+                                  color: '#fff',
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  fontWeight: 700,
+                                  fontSize: 14,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {initial}
+                              </span>
+                            );
+                          })()}
 
                           <div>
                             <div style={{ fontSize: 14, color: '#1a2720' }}>
-                              <strong>{event.actor_name}</strong>{' '}
+                              <strong>{event.actor_name || 'Household member'}</strong>{' '}
                               <span style={{ color: '#68635c' }}>
                                 {event.kind === 'seen'
                                   ? 'remembered'

@@ -1,8 +1,8 @@
-﻿# iPhone → SpacetimeDB → MASt3R-SLAM
+# iPhone → SpacetimeDB → MASt3R-SLAM
 
 Safari sends JPEGs over a same-origin WebSocket. The receiver scores each frame,
 calls `upload_binary_frame` over a persistent binary WebSocket, receives JPEG rows
-from a subscription to private `image_stream_binary`, verifies the bytes, and writes
+from a subscription to public `image_stream_binary`, verifies the bytes, and writes
 an ordered local spool. It then acknowledges (deletes) the database row over the
 same connection. Up to four frames can be in flight concurrently.
 `watch_slam.py` automatically starts MASt3R-SLAM on each new spool.
@@ -57,7 +57,7 @@ continue into the local spool during startup.
 
 The URL key gates uploads; the database owner token stays on the backend in
 `.data/db-token` (or `SPACETIMEDB_TOKEN`). Both files and images are git-ignored.
-The table and reducers restrict access to the configured database owner.
+Both image tables are publicly readable and both upload reducers accept anonymous uploads. Frame validation remains enforced; acknowledgment/deletion reducers still require the configured owner identity. The integrated API calls upload_binary_frame over HTTP with JPEG byte-array arguments and hashes the household/scan pair to a stable 32-character hexadecimal session. CAMERA_SPACETIMEDB_TOKEN may be empty.
 
 ## SLAM output
 

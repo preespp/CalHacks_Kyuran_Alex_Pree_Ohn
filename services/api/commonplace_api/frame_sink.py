@@ -3,7 +3,8 @@
 This is an ingestion connection, separate from retained evidence images and the
 guest registry. The team's consumer owns processing and acknowledgement policy.
 """
-import base64
+import hashlib
+import json
 
 import httpx
 
@@ -15,12 +16,12 @@ class FrameUploadError(Exception):
 class SpacetimeFrameSink:
     def __init__(self, settings):
         self.url = (settings.camera_spacetime_url.rstrip("/") + "/v1/database/"
-                    + settings.camera_spacetime_database + "/call/upload_image_frame")
+                    + settings.camera_spacetime_database + "/call/upload_binary_frame")
         # Never borrow the guest registry credential for the image database.
         self.token = settings.camera_spacetime_token
 
     async def put(self, household, scan_id, sequence, captured_us, width, height, jpeg):
-        session = f"commonplace:{household}:{scan_id}"
+        session = hashlib.sha256(json.dumps([household, scan_id]).encode()).hexdigest()[:32]
         headers = {"Content-Type": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
@@ -28,7 +29,7 @@ class SpacetimeFrameSink:
             async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=5), follow_redirects=False) as client:
                 response = await client.post(self.url, headers=headers, json=[
                     session, sequence, captured_us, width, height,
-                    base64.b64encode(jpeg).decode("ascii"),
+                    list(jpeg),
                 ])
         except httpx.RequestError:
             raise FrameUploadError("Image upload could not be confirmed. Check the image database connection, then restart the camera.") from None
@@ -36,7 +37,7 @@ class SpacetimeFrameSink:
             raise FrameUploadError("The image database rejected upload access. Configure CAMERA_SPACETIMEDB_TOKEN locally with an identity allowed to upload, or ask the database teammate to permit the upload reducer.")
         if not response.is_success:
             # Do not echo the provider body: it can include arguments/image bytes.
-            raise FrameUploadError(f"The image database rejected the frame (HTTP {response.status_code}). Check CAMERA_SPACETIMEDB_DATABASE and the upload_image_frame reducer contract, then restart the camera.")
+            raise FrameUploadError(f"The image database rejected the frame (HTTP {response.status_code}). Check CAMERA_SPACETIMEDB_DATABASE and the upload_binary_frame reducer contract, then restart the camera.")
         return {"provider": "spacetimedb", "state": "uploaded", "session": session, "sequence": sequence}
 
 

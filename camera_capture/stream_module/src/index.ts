@@ -18,7 +18,7 @@ const message = table(
 );
 
 const imageStream = table(
-  { name: 'image_stream', public: false },
+  { name: 'image_stream', public: true },
   {
     id: t.u64().primaryKey().autoInc(),
     session: t.string().index('btree'),
@@ -29,7 +29,7 @@ const imageStream = table(
 );
 // Separate binary table keeps the existing base64 schema/data compatible.
 const imageStreamBinary = table(
-  { name: 'image_stream_binary', public: false },
+  { name: 'image_stream_binary', public: true },
   {
     id: t.u64().primaryKey().autoInc(), session: t.string().index('btree'),
     sequence: t.u32(), capturedUs: t.u64(), width: t.u32(), height: t.u32(),
@@ -42,8 +42,6 @@ export default spacetimedb;
 export const upload_binary_frame = spacetimedb.reducer(
   { session: t.string(), sequence: t.u32(), capturedUs: t.u64(), width: t.u32(), height: t.u32(), jpeg: t.array(t.u8()) },
   (ctx, args) => {
-    if (ctx.sender.toHexString() !== 'c200c8fead17b327607f761eee6d15f253e8a33e01fae5c9731d377b9314e8ad')
-      throw new SenderError('Capture backend only');
     if (!/^[a-f0-9]{32}$/.test(args.session) || args.sequence < 1 || args.width < 1 || args.height < 1 || args.width > 1920 || args.height > 1920 || args.jpeg.length > 1048576 || args.jpeg.length < 3 || args.jpeg[0] !== 255 || args.jpeg[1] !== 216 || args.jpeg[2] !== 255)
       throw new SenderError('Invalid JPEG frame');
     ctx.db.imageStreamBinary.insert({ id: 0n, ...args });
@@ -59,8 +57,6 @@ export const acknowledge_binary_frame = spacetimedb.reducer({ id: t.u64() }, (ct
 export const upload_image_frame = spacetimedb.reducer(
   { session: t.string(), sequence: t.u32(), capturedUs: t.u64(), width: t.u32(), height: t.u32(), jpegBase64: t.string() },
   (ctx, args) => {
-    if (ctx.sender.toHexString() !== 'c200c8fead17b327607f761eee6d15f253e8a33e01fae5c9731d377b9314e8ad')
-      throw new SenderError('Capture backend only');
     if (!/^[a-f0-9]{32}$/.test(args.session) || args.width < 1 || args.height < 1 || args.width > 1920 || args.height > 1920 || args.jpegBase64.length > 1400000 || !args.jpegBase64.startsWith('/9j/'))
       throw new SenderError('Invalid JPEG frame');
     ctx.db.imageStream.insert({ id: 0n, ...args });

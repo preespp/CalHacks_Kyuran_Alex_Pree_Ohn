@@ -1,4 +1,4 @@
-import base64
+import hashlib
 import io
 import json
 import time
@@ -36,7 +36,7 @@ def test_camera_uploads_normalized_frames_with_separate_credentials_and_no_model
     requests = []
     def respond(request):
         assert request.url.host == 'image-db.example.test'
-        assert request.url.path == '/v1/database/team-images/call/upload_image_frame'
+        assert request.url.path == '/v1/database/team-images/call/upload_binary_frame'
         assert 'guest-secret-never-forward' not in str(request.headers)
         if image_token:
             assert request.headers['Authorization'] == f'Bearer {image_token}'
@@ -58,7 +58,7 @@ def test_camera_uploads_normalized_frames_with_separate_credentials_and_no_model
             assert response.status_code == 200
             assert response.json()['image_upload'] == {
                 'provider': 'spacetimedb', 'state': 'uploaded',
-                'session': 'commonplace:demo-home:database-scan-1', 'sequence': sequence,
+                'session': hashlib.sha256(json.dumps(["demo-home", "database-scan-1"]).encode()).hexdigest()[:32], 'sequence': sequence,
             }
             assert response.json()['analysis']['state'] == 'disabled'
         assert client.get('/api/health').json()['camera_frame_sink'] == 'spacetimedb'
@@ -67,10 +67,10 @@ def test_camera_uploads_normalized_frames_with_separate_credentials_and_no_model
     assert len(requests) == 2
     for sequence, body in enumerate(requests, 1):
         session, seq, captured_us, width, height, encoded = body
-        assert session == 'commonplace:demo-home:database-scan-1'
+        assert session == hashlib.sha256(json.dumps(["demo-home", "database-scan-1"]).encode()).hexdigest()[:32]
         assert seq == sequence
         assert isinstance(captured_us, int) and captured_us > 1_000_000_000_000
-        image = Image.open(io.BytesIO(base64.b64decode(encoded, validate=True)))
+        image = Image.open(io.BytesIO(bytes(encoded)))
         assert image.format == 'JPEG' and image.size == (width, height) == (100, 80)
 
 

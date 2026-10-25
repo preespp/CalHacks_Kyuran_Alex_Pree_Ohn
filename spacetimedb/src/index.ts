@@ -61,13 +61,27 @@ const observation = table(
     bbox: t.option(t.array(t.f64())),
     source: t.string(),
     kind: t.string(),
-    actor: t.identity(),
+    actor: t.option(t.identity()),
     observedAt: t.timestamp(),
     createdAt: t.timestamp(),
   },
 );
 
-const memory = schema({ household, membership, invitation, worker, object, observation });
+// Independent selectable prototype profiles. No image bytes or session secrets.
+const guestProfile = table(
+  { name: 'guest_profile', public: false },
+  { id: t.string().primaryKey(), household_id: t.string(), name: t.string() },
+);
+
+const memory = schema({
+  household,
+  membership,
+  invitation,
+  worker,
+  object,
+  observation,
+  guestProfile,
+});
 export default memory;
 type Context = ReducerCtx<InferSchema<typeof memory>>;
 
@@ -88,6 +102,25 @@ function requireOwner(ctx: Context) {
   if (member.role !== 'owner') throw new SenderError('Household owner required');
   return member;
 }
+
+export const createGuestProfile = memory.reducer(
+  { name: 'create_guest_profile' },
+  { id: t.string(), name: t.string() },
+  (ctx, args) => {
+    const owner = requireOwner(ctx);
+    if (owner.householdId !== 'demo-home')
+      throw new SenderError('Prototype registry requires the demo-home owner');
+    if (!/^guest-[a-f0-9]{32}$/.test(args.id)) throw new SenderError('Invalid guest ID');
+    const name = text(args.name, 50, 'Guest name');
+    if (/[\x00-\x1f\x7f]/.test(name)) throw new SenderError('Use a single-line guest name');
+    const existing = ctx.db.guestProfile.id.find(args.id);
+    if (existing) {
+      if (existing.name !== name) throw new SenderError('Guest ID already exists');
+      return;
+    }
+    ctx.db.guestProfile.insert({ id: args.id, household_id: owner.householdId, name });
+  },
+);
 
 export const createHousehold = memory.reducer(
   { id: t.string(), name: t.string(), displayName: t.string() },
@@ -159,15 +192,11 @@ export const recordVisualObservation = memory.reducer(
     location: t.string(),
     imageKey: t.string(),
     bbox: t.array(t.f64()),
-    actor: t.identity(),
     observedAt: t.timestamp(),
   },
   (ctx, args) => {
     if (!ctx.db.worker.id.find(`${args.householdId}:${ctx.sender.toHexString()}`))
       throw new SenderError('Authorized vision worker required');
-    const actor = ctx.db.membership.identity.find(args.actor);
-    if (!actor || actor.householdId !== args.householdId)
-      throw new SenderError('Capture contributor is not a household member');
     const [x1, y1, x2, y2] = args.bbox;
     if (
       args.bbox.length !== 4 ||
@@ -199,7 +228,7 @@ export const recordVisualObservation = memory.reducer(
       bbox: args.bbox,
       source: 'gemini',
       kind: 'seen',
-      actor: args.actor,
+      actor: undefined,
       observedAt: args.observedAt,
       createdAt: ctx.timestamp,
     });
@@ -231,7 +260,7 @@ export const reportLocation = memory.reducer(
       bbox: undefined,
       source: 'reported',
       kind: args.kind,
-      actor: ctx.sender,
+      actor: undefined,
       observedAt: ctx.timestamp,
       createdAt: ctx.timestamp,
     });

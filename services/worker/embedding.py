@@ -7,8 +7,6 @@ import io
 from typing import Optional
 import numpy as np
 from PIL import Image
-import torch
-from transformers import AutoImageProcessor, SiglipVisionModel, logging as hf_logging
 
 _processor = None
 _model = None
@@ -18,6 +16,8 @@ MODEL_ID = "google/siglip-base-patch16-224"
 
 
 def _get_embedding_components():
+    import torch
+    from transformers import AutoImageProcessor, SiglipVisionModel, logging as hf_logging
     global _processor, _model, _device
     if _model is None:
         _device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
@@ -37,6 +37,7 @@ def embed_crop(jpeg_bytes: bytes, bbox: list[float]) -> list[float]:
     Crops the object bounding box [x1, y1, x2, y2] from the image and extracts
     an L2-normalized 768-dimensional SigLIP visual embedding vector.
     """
+    import torch
     processor, model, device = _get_embedding_components()
 
     with Image.open(io.BytesIO(jpeg_bytes)) as pil_img:

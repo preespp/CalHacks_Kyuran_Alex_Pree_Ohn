@@ -1,6 +1,5 @@
-export type Profile = 'alex' | 'pree' | 'kyuran';
 export interface Member {
-  id: Profile;
+  id: string;
   name: string;
   household_id: string;
 }
@@ -10,10 +9,13 @@ export interface Session {
 }
 export interface Health {
   vision_provider: 'demo' | 'gemini';
-  storage_provider: 'local' | 'azure';
+  assistant_provider: 'disabled' | 'gemini' | 'muse';
+  storage_provider: 'local';
   memory_provider: string;
   auth_mode: string;
   sync_mode: string;
+  camera_frame_sink?: 'disabled' | 'spacetimedb';
+  sample_data?: boolean;
 }
 export interface Observation {
   id: string;
@@ -23,10 +25,13 @@ export interface Observation {
   image_url: string | null;
   bbox: [number, number, number, number] | null;
   source: 'sample' | 'gemini' | 'reported';
-  actor_name: string;
   observed_at: string;
   kind: 'seen' | 'moved' | 'found' | 'correction';
   label?: string;
+  spatial?: {
+    depth_rank?: number;
+    depth_value?: number | null;
+  } | null;
 }
 export interface MemoryObject {
   id: string;
@@ -35,4 +40,17 @@ export interface MemoryObject {
   aliases: string[];
   latest: Observation;
   last_visual: Observation | null;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+export interface ChatResponse {
+  provider: 'gemini' | 'muse';
+  answer: string;
+  query: string;
+  matches: MemoryObject[];
+  total_matches: number;
+  needs_disambiguation: boolean;
 }

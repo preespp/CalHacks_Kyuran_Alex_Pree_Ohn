@@ -15,11 +15,13 @@ export default function EvidenceImage({
 }) {
   const [url, setUrl] = useState('');
   const [failed, setFailed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   useEffect(() => {
     const controller = new AbortController();
     let objectUrl = '';
     setUrl('');
     setFailed(false);
+    setErrorMessage('');
     if (observation?.image_url) {
       const endpoint = depthMode ? `${observation.image_url}/depth` : observation.image_url;
       fetch(endpoint, {
@@ -27,7 +29,16 @@ export default function EvidenceImage({
         signal: controller.signal,
       })
         .then((response) => {
-          if (!response.ok) throw new Error('Image unavailable');
+          if (!response.ok) {
+            return response
+              .json()
+              .catch(() => ({}))
+              .then((body: { detail?: unknown }) => {
+                throw new Error(
+                  typeof body.detail === 'string' ? body.detail : 'Image unavailable',
+                );
+              });
+          }
           return response.blob();
         })
         .then((blob) => {
@@ -35,7 +46,10 @@ export default function EvidenceImage({
           setUrl(objectUrl);
         })
         .catch((error) => {
-          if (error.name !== 'AbortError') setFailed(true);
+          if (error.name !== 'AbortError') {
+            setFailed(true);
+            setErrorMessage(error instanceof Error ? error.message : 'Image unavailable');
+          }
         });
     }
     return () => {
@@ -74,7 +88,7 @@ export default function EvidenceImage({
           <ImageOff size={24} />
           <span>
             {failed
-              ? 'Photo unavailable'
+              ? errorMessage
               : observation?.image_url
                 ? 'Loading evidence…'
                 : 'No photo recorded'}

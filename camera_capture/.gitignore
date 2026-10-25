@@ -1,0 +1,4 @@
+.venv-linux/
+.data/
+*.log
+cloudflared

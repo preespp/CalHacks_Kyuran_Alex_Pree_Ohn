@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -8,25 +9,42 @@ import {
   ChevronRight,
   Compass,
   Grid,
+  History,
   Info,
+  LoaderCircle,
   MapPin,
   Maximize2,
   MoreHorizontal,
   Scan,
   Search,
   Sparkles,
-  User,
   X,
 } from 'lucide-react';
-import { api, timeAgo } from './api';
+import { api, ApiError, timeAgo, userFacingError } from './api';
 import CapturePanel from './components/CapturePanel';
 import EvidenceImage from './components/EvidenceImage';
+import GuestEntry from './components/GuestEntry';
 import { RotatingText } from './components/reactbits';
-import type { Health, MemoryObject, Profile, Session } from './types';
+import type { ChatResponse, Health, MemoryObject, Observation, Session } from './types';
+
+function sourceName(source: Observation['source']): string {
+  switch (source) {
+    case 'sample':
+      return 'Sample illustration';
+    case 'gemini':
+      return 'Camera observation';
+    case 'reported':
+      return 'Location report';
+  }
+}
 
 function loadSession(): Session | null {
   try {
-    const value = JSON.parse(sessionStorage.getItem('commonplace-session') ?? 'null');
+    const value = JSON.parse(
+      sessionStorage.getItem('commonplace-guest-session') ??
+        sessionStorage.getItem('commonplace-session') ??
+        'null',
+    );
     return value?.token && value?.member ? value : null;
   } catch {
     return null;
@@ -45,19 +63,20 @@ const PRESET_ROOMS = [
   { name: 'Studio', emoji: '🎨', hint: 'Work station, camera equipment' },
 ];
 
-// Deterministic depth and match badge calculation
-function getDepth(label: string): string {
-  const hash = label.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  const m = ((hash % 20) + 6) / 10;
-  return `${m.toFixed(1)}m`;
+function getSourceBadge(item: MemoryObject): { text: string; color: 'lime' | 'blue' | 'pink' } {
+  switch (item.latest.source) {
+    case 'sample':
+      return { text: 'Sample illustration', color: 'blue' };
+    case 'gemini':
+      return { text: 'Camera observation', color: 'lime' };
+    case 'reported':
+      return { text: 'Location report', color: 'pink' };
+  }
 }
 
-function getMatchBadge(label: string): { text: string; color: 'lime' | 'blue' | 'pink' } {
-  const hash = label.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  const colors: ('lime' | 'blue' | 'pink')[] = ['lime', 'blue', 'pink'];
-  const color = colors[hash % colors.length];
-  const pct = 94 + (hash % 6);
-  return { text: `${pct}% match`, color };
+function getDepth(item: MemoryObject): string {
+  const rank = item.latest.spatial?.depth_rank;
+  return typeof rank === 'number' ? `Relative rank ${rank}` : 'Not available';
 }
 
 // Deterministic coordinates for markers inside the embedded 3D map
@@ -76,10 +95,15 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession);
   const [health, setHealth] = useState<Health | null>(null);
   const [items, setItems] = useState<MemoryObject[]>([]);
+  const [events, setEvents] = useState<Observation[]>([]);
   const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
   const [roomFilter, setRoomFilter] = useState('All rooms');
   const [selectedObject, setSelectedObject] = useState<MemoryObject | null>(null);
-  const [page, setPage] = useState<'overview' | 'objects' | 'detail'>('overview');
+  const [page, setPage] = useState<'overview' | 'objects' | 'activity' | 'detail'>('overview');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [switchingProfile, setSwitchingProfile] = useState(false);
 
   // Space categorization & Interactive 3D map in My Objects page
   const [activeSpace, setActiveSpace] = useState<string>('All');
@@ -90,66 +114,134 @@ export default function App() {
   const [scanStep, setScanStep] = useState<'select-room' | 'capture'>('select-room');
   const [scanRoom, setScanRoom] = useState('Living room');
   const [customRoom, setCustomRoom] = useState('');
-  const [cameraDevice, setCameraDevice] = useState('iPhone 15 Pro Camera (USB / Virtual)');
   const [photoMode, setPhotoMode] = useState<'original' | 'depth'>('original');
   const [photoViewer, setPhotoViewer] = useState(false);
 
   // Modals
   const [infoModal, setInfoModal] = useState(false);
-  const [profileModal, setProfileModal] = useState(false);
+  const [profileModal, setProfileModal] = useState(() => !loadSession());
 
   // Conversational Ask Muse state
   const [museInput, setMuseInput] = useState('');
   const [museAnswer, setMuseAnswer] = useState(
     'I can help you remember where anything is. Try asking about your keys, camera, or adapter.',
   );
+  const [museMatches, setMuseMatches] = useState<MemoryObject[]>([]);
+  const [museError, setMuseError] = useState('');
+  const [museBusy, setMuseBusy] = useState(false);
 
   const [revision, setRevision] = useState(0);
+  const [history, setHistory] = useState<Observation[]>([]);
+  const [historyError, setHistoryError] = useState('');
+  const [roomDraft, setRoomDraft] = useState('');
+  const [locationDraft, setLocationDraft] = useState('');
+  const [noteKind, setNoteKind] = useState<'moved' | 'found' | 'correction'>('moved');
+  const [savingNote, setSavingNote] = useState(false);
 
-  // Auto-init session
   useEffect(() => {
-    if (session) return;
-    let cancelled = false;
-    api<Session>('/api/demo/session', undefined, {
-      method: 'POST',
-      body: JSON.stringify({ profile: 'alex' }),
-    })
-      .then((val) => {
-        if (!cancelled) {
-          sessionStorage.setItem('commonplace-session', JSON.stringify(val));
-          setSession(val);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [session, revision]);
+    const timer = setTimeout(() => setSearch(query), 220);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  // Fetch objects and health
+  // Keep the page synchronized with the household memory store.
   useEffect(() => {
-    if (!session) return;
+    if (!session) {
+      setLoading(false);
+      return;
+    }
+    const activeSession = session;
     let cancelled = false;
+    let running = false;
+    const controller = new AbortController();
     async function loadData() {
+      if (running) return;
+      running = true;
       try {
-        const [objRes, healthRes] = await Promise.all([
-          api<{ objects: MemoryObject[] }>(`/api/objects`, session!.token),
-          api<Health>('/api/health'),
+        const params = new URLSearchParams({ q: search });
+        if (roomFilter !== 'All rooms') params.set('room', roomFilter);
+        const [objRes, healthRes, activityRes] = await Promise.all([
+          api<{ objects: MemoryObject[] }>(`/api/objects?${params}`, activeSession.token, {
+            signal: controller.signal,
+          }),
+          api<Health>('/api/health', undefined, { signal: controller.signal }),
+          api<{ events: Observation[] }>('/api/activity', activeSession.token, {
+            signal: controller.signal,
+          }),
         ]);
         if (!cancelled) {
           setItems(objRes.objects);
           setHealth(healthRes);
+          setEvents(activityRes.events);
+          setError('');
+          setLoading(false);
+          setSelectedObject((current) =>
+            current ? (objRes.objects.find((item) => item.id === current.id) ?? current) : null,
+          );
           if (objRes.objects.length > 0 && !activeMapObjectId) {
             setActiveMapObjectId(objRes.objects[0].id);
           }
         }
-      } catch {}
+      } catch (failure) {
+        if (!cancelled && !controller.signal.aborted) {
+          setError(
+            failure instanceof ApiError && failure.status === 404
+              ? 'Household memory is unavailable right now. Please try again shortly.'
+              : failure instanceof Error
+                ? failure.message
+                : 'Could not load household memory.',
+          );
+          setLoading(false);
+          if (failure instanceof ApiError && failure.status === 401) {
+            sessionStorage.removeItem('commonplace-guest-session');
+            sessionStorage.removeItem('commonplace-session');
+            setSession(null);
+            setProfileModal(true);
+          }
+        }
+      } finally {
+        running = false;
+      }
     }
     void loadData();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void loadData();
+    }, 5000);
     return () => {
       cancelled = true;
+      controller.abort();
+      window.clearInterval(timer);
     };
-  }, [session, revision]);
+  }, [session, revision, search, roomFilter]);
+
+  useEffect(() => {
+    if (!selectedObject || !session) {
+      setHistory([]);
+      setHistoryError('');
+      return;
+    }
+    const controller = new AbortController();
+    setRoomDraft(selectedObject.latest.room);
+    setLocationDraft(selectedObject.latest.location);
+    api<{ observations: Observation[] }>(
+      `/api/objects/${encodeURIComponent(selectedObject.id)}/history`,
+      session.token,
+      { signal: controller.signal },
+    )
+      .then((result) => {
+        if (!controller.signal.aborted) {
+          setHistory(result.observations);
+          setHistoryError('');
+        }
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted) {
+          setHistoryError(
+            failure instanceof Error ? failure.message : 'Could not load observation history.',
+          );
+        }
+      });
+    return () => controller.abort();
+  }, [selectedObject?.id, selectedObject?.latest.id, session]);
 
   // Unique rooms
   const rooms = useMemo(() => {
@@ -157,8 +249,11 @@ export default function App() {
     items.forEach((item) => {
       if (item.latest?.room) set.add(item.latest.room);
     });
+    events.forEach((event) => {
+      if (event.room) set.add(event.room);
+    });
     return ['All rooms', ...Array.from(set)];
-  }, [items]);
+  }, [items, events]);
 
   // Objects filtered for overview query & filter
   const filteredItems = useMemo(() => {
@@ -203,28 +298,43 @@ export default function App() {
     }
   }, [spaceItems, activeMapObjectId]);
 
-  // Ask Muse Handler
-  function handleAskMuse(question: string) {
-    const prompt = question.trim().toLowerCase();
-    if (!prompt) return;
-
-    const words = prompt.split(/\s+/).filter((w) => w.length > 2);
-    const found = items.find((item) => {
-      const text = `${item.label} ${item.latest?.room} ${item.latest?.location}`.toLowerCase();
-      return words.some((w) => text.includes(w));
-    });
-
-    if (found) {
-      const depth = getDepth(found.label);
-      setMuseAnswer(
-        `I found your ${found.label.toLowerCase()}. It was last observed in the ${found.latest.room.toLowerCase()}, ${found.latest.location.toLowerCase()}, approximately ${depth} from the camera viewpoint.`,
-      );
-    } else {
-      setMuseAnswer(
-        `I scanned your recent household memories, but didn't locate an exact match. Could it be in the living room or entryway? You can also run a New Scan to update memory.`,
-      );
-    }
+  async function handleAskMuse(question: string) {
+    const message = question.trim();
+    if (!message || !session || museBusy) return;
     setMuseInput('');
+    setMuseError('');
+    setMuseMatches([]);
+    setMuseBusy(true);
+    try {
+      if (health?.assistant_provider === 'muse' || health?.assistant_provider === 'gemini') {
+        const result = await api<ChatResponse>('/api/chat', session.token, {
+          method: 'POST',
+          body: JSON.stringify({ message }),
+        });
+        setMuseAnswer(result.answer);
+        setMuseMatches(result.matches);
+      } else {
+        const result = await api<{
+          matches: MemoryObject[];
+          needs_disambiguation: boolean;
+          guidance: string;
+        }>(`/api/connector/search?${new URLSearchParams({ q: message })}`, session.token);
+        setMuseMatches(result.matches);
+        setMuseAnswer(
+          result.matches.length
+            ? `${result.guidance} I found ${result.matches.length} matching ${result.matches.length === 1 ? 'memory' : 'memories'} in your household.`
+            : result.guidance,
+        );
+      }
+    } catch (failure) {
+      setMuseError(
+        failure instanceof Error
+          ? userFacingError(failure.message, '/api/chat')
+          : 'Could not search household memory.',
+      );
+    } finally {
+      setMuseBusy(false);
+    }
   }
 
   function handleOpenScanModal() {
@@ -240,20 +350,119 @@ export default function App() {
     setScanStep('capture');
   }
 
-  function handleSwitchProfile(profile: Profile) {
-    sessionStorage.removeItem('commonplace-session');
-    setSession(null);
-    setProfileModal(false);
-    api<Session>('/api/demo/session', undefined, {
-      method: 'POST',
-      body: JSON.stringify({ profile }),
-    })
-      .then((val) => {
-        sessionStorage.setItem('commonplace-session', JSON.stringify(val));
-        setSession(val);
-        setRevision((r) => r + 1);
-      })
-      .catch(() => {});
+  async function joinGuest(name: string, userId?: string) {
+    if (switchingProfile) return;
+    setSwitchingProfile(true);
+    setError('');
+    try {
+      const val = await api<Session>('/api/guest/session', session?.token, {
+        method: 'POST',
+        body: JSON.stringify(userId ? { user_id: userId } : { name }),
+      });
+      sessionStorage.setItem('commonplace-guest-session', JSON.stringify(val));
+      sessionStorage.removeItem('commonplace-session');
+      setSession(val);
+      setItems([]);
+      setEvents([]);
+      setHealth(null);
+      setSelectedObject(null);
+      setLoading(true);
+      setQuery('');
+      setSearch('');
+      setRoomFilter('All rooms');
+      setRevision((value) => value + 1);
+      setProfileModal(false);
+    } finally {
+      setSwitchingProfile(false);
+    }
+  }
+
+  async function leaveGuest() {
+    if (!session || switchingProfile) return;
+    setSwitchingProfile(true);
+    setError('');
+    try {
+      await api<void>('/api/guest/session', session.token, { method: 'DELETE' });
+      sessionStorage.removeItem('commonplace-guest-session');
+      sessionStorage.removeItem('commonplace-session');
+      setSession(null);
+      setItems([]);
+      setEvents([]);
+      setHealth(null);
+      setSelectedObject(null);
+      setProfileModal(true);
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.status === 401) {
+        sessionStorage.removeItem('commonplace-guest-session');
+        sessionStorage.removeItem('commonplace-session');
+        setSession(null);
+        setProfileModal(true);
+      } else {
+        setError(
+          failure instanceof Error ? failure.message : 'Could not leave this household session.',
+        );
+      }
+    } finally {
+      setSwitchingProfile(false);
+    }
+  }
+
+  async function handleSaveLocation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !selectedObject || savingNote) return;
+    setSavingNote(true);
+    setError('');
+    try {
+      const result = await api<{ observations: Observation[] }>(
+        `/api/objects/${encodeURIComponent(selectedObject.id)}/notes`,
+        session.token,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            room: roomDraft.trim(),
+            location: locationDraft.trim(),
+            kind: noteKind,
+          }),
+        },
+      );
+      setHistory(result.observations);
+      setHistoryError('');
+      setRevision((value) => value + 1);
+    } catch (failure) {
+      setHistoryError(
+        failure instanceof Error
+          ? userFacingError(failure.message, '/api/objects/notes')
+          : 'Could not update this location.',
+      );
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function handleOpenActivity(event: Observation) {
+    const item = items.find((candidate) => candidate.id === event.object_id);
+    if (item) {
+      setSelectedObject(item);
+      setPage('detail');
+      return;
+    }
+    if (!session) return;
+    try {
+      const queryText = event.label || event.location;
+      const result = await api<{ objects: MemoryObject[] }>(
+        `/api/objects?${new URLSearchParams({ q: queryText })}`,
+        session.token,
+      );
+      const match = result.objects.find((candidate) => candidate.id === event.object_id);
+      if (match) {
+        setSelectedObject(match);
+        setPage('detail');
+      } else {
+        setError('That memory is no longer available in the current household.');
+      }
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Could not open this memory.');
+    }
   }
 
   const currentDate = new Intl.DateTimeFormat('en-US', {
@@ -262,7 +471,14 @@ export default function App() {
     day: 'numeric',
   }).format(new Date());
 
-  const latestScanRoom = items[0]?.latest?.room || 'Living room';
+  const latestMemory = items.reduce<MemoryObject | null>(
+    (latest, item) =>
+      !latest || Date.parse(item.latest.observed_at) > Date.parse(latest.latest.observed_at)
+        ? item
+        : latest,
+    null,
+  );
+  const latestScanRoom = latestMemory?.latest.room || 'No memories yet';
   const activeTargetItem = items.find((it) => it.id === activeMapObjectId);
 
   return (
@@ -298,7 +514,18 @@ export default function App() {
           >
             <Boxes size={18} />
             <span>My objects</span>
-            <span className="count">{items.length || 48}</span>
+            <span className="count">{items.length}</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${page === 'activity' ? 'active' : ''}`}
+            onClick={() => {
+              setPage('activity');
+              setSelectedObject(null);
+            }}
+          >
+            <History size={18} />
+            <span>Recent activity</span>
           </button>
           <button
             type="button"
@@ -314,15 +541,16 @@ export default function App() {
           <div className="storage">
             <div className="storage-row">
               <span>Memory space</span>
-              <span>68%</span>
+              <span>{items.length} items</span>
             </div>
             <div className="progress">
-              <span style={{ width: '68%' }}></span>
+              <span style={{ width: `${Math.min(items.length * 4, 100)}%` }}></span>
             </div>
-            <p>3,284 objects remembered</p>
+            <p>Remembered in your household</p>
           </div>
 
-          <div
+          <button
+            type="button"
             className="profile"
             onClick={() => setProfileModal(true)}
             title="Click to switch profile"
@@ -335,7 +563,7 @@ export default function App() {
               <span>Personal space</span>
             </div>
             <MoreHorizontal size={18} />
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -375,12 +603,22 @@ export default function App() {
                 type="button"
                 className="scan-button"
                 onClick={handleOpenScanModal}
+                disabled={!session || !health}
               >
                 <Camera size={18} />
                 <span>New scan</span>
               </button>
             </div>
           </header>
+        )}
+
+        {error && (
+          <div className="error-banner" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={() => setRevision((value) => value + 1)}>
+              Retry
+            </button>
+          </div>
         )}
 
         {/* View Router */}
@@ -409,6 +647,7 @@ export default function App() {
                   type="button"
                   className="detail-more"
                   aria-label="More options"
+                  onClick={() => setInfoModal(true)}
                 >
                   <MoreHorizontal size={18} />
                 </button>
@@ -437,7 +676,7 @@ export default function App() {
               <div className="detail-room-copy">
                 <p className="eyebrow light">SPATIAL MEMORY</p>
                 <h2>{selectedObject.latest.location}</h2>
-                <span>Muse located this object using your latest room scan.</span>
+                <span>Illustrative room view. Use the saved evidence below for the last-seen image.</span>
               </div>
 
               <div className="room-scene detail-room-scene">
@@ -446,7 +685,7 @@ export default function App() {
                   <span className="marker-dot"></span>
                   <div>
                     <b>{selectedObject.label}</b>
-                    <small>{getDepth(selectedObject.label)} away</small>
+                    <small>{getDepth(selectedObject)}</small>
                   </div>
                 </div>
                 <div className="sofa">
@@ -472,7 +711,7 @@ export default function App() {
                   <i></i>
                 </div>
                 <div className="depth-label">
-                  DEPTH MAP · {selectedObject.latest.room.toUpperCase()}
+                  ROOM MAP · {selectedObject.latest.room.toUpperCase()}
                 </div>
               </div>
 
@@ -481,10 +720,7 @@ export default function App() {
                   <MapPin size={16} /> {selectedObject.latest.room}
                 </span>
                 <span>
-                  Measured depth <strong>{getDepth(selectedObject.label)}</strong>
-                </span>
-                <span>
-                  Confidence <strong>98%</strong>
+                  Evidence <strong>{sourceName(selectedObject.latest.source)}</strong>
                 </span>
               </div>
             </section>
@@ -536,7 +772,7 @@ export default function App() {
                   >
                     {session?.token ? (
                       <EvidenceImage
-                        observation={selectedObject.latest}
+                        observation={selectedObject.last_visual}
                         token={session.token}
                         highlight={true}
                         depthMode={photoMode === 'depth'}
@@ -563,10 +799,11 @@ export default function App() {
                   </div>
 
                   <p>
-                    I last remember your <strong>{selectedObject.label.toLowerCase()}</strong> in the{' '}
-                    <strong>{selectedObject.latest.room.toLowerCase()}</strong>. Look around the{' '}
-                    {selectedObject.latest.location.toLowerCase()}. It should be about{' '}
-                    {getDepth(selectedObject.label)} from where you scanned.
+                    The latest saved observation places your{' '}
+                    <strong>{selectedObject.label.toLowerCase()}</strong> in the{' '}
+                    <strong>{selectedObject.latest.room.toLowerCase()}</strong>, at{' '}
+                    {selectedObject.latest.location.toLowerCase()}. This record describes where it
+                    was last seen; it does not confirm the object is still there.
                   </p>
 
                   <button
@@ -594,22 +831,75 @@ export default function App() {
                       <dd>{selectedObject.latest.location}</dd>
                     </div>
                     <div>
-                      <dt>Measured depth</dt>
-                      <dd>{getDepth(selectedObject.label)}</dd>
+                      <dt>Spatial estimate</dt>
+                      <dd>{getDepth(selectedObject)}</dd>
                     </div>
                     <div>
-                      <dt>Confidence</dt>
-                      <dd>98%</dd>
-                    </div>
-                    <div>
-                      <dt>Remembered by</dt>
-                      <dd>{selectedObject.latest.actor_name}</dd>
+                      <dt>Evidence</dt>
+                      <dd>{sourceName(selectedObject.latest.source)}</dd>
                     </div>
                     <div>
                       <dt>Last seen</dt>
                       <dd>{timeAgo(selectedObject.latest.observed_at)}</dd>
                     </div>
                   </dl>
+                </div>
+                <div className="metadata-card location-update-card">
+                  <p className="eyebrow">UPDATE LOCATION</p>
+                  <form className="location-update-form" onSubmit={(event) => void handleSaveLocation(event)}>
+                    <label>
+                      Room
+                      <input
+                        required
+                        maxLength={80}
+                        value={roomDraft}
+                        onChange={(event) => setRoomDraft(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Specific location
+                      <input
+                        required
+                        maxLength={300}
+                        value={locationDraft}
+                        onChange={(event) => setLocationDraft(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Update type
+                      <select
+                        value={noteKind}
+                        onChange={(event) =>
+                          setNoteKind(event.target.value as 'moved' | 'found' | 'correction')
+                        }
+                      >
+                        <option value="moved">I moved it</option>
+                        <option value="found">I found it here</option>
+                        <option value="correction">Correct the last location</option>
+                      </select>
+                    </label>
+                    {historyError && (
+                      <p className="error" role="alert">
+                        {historyError}
+                      </p>
+                    )}
+                    <button className="primary-button" type="submit" disabled={savingNote}>
+                      {savingNote ? 'Saving…' : 'Update location'}
+                    </button>
+                  </form>
+                  <details className="history-details">
+                    <summary>Observation history ({history.length})</summary>
+                    {history.map((observation) => (
+                      <div className="history-entry" key={observation.id}>
+                        <strong>{observation.room}</strong>
+                        <span>{observation.location}</span>
+                        <small>
+                          {sourceName(observation.source)} · {timeAgo(observation.observed_at)}
+                        </small>
+                      </div>
+                    ))}
+                    {!history.length && !historyError && <p>No earlier observations.</p>}
+                  </details>
                 </div>
               </div>
             </section>
@@ -673,9 +963,9 @@ export default function App() {
                   </span>
                 </h2>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span className="map-tag">Interactive 3D Space</span>
+                  <span className="map-tag">Room visualization</span>
                   <span style={{ fontSize: 11, color: '#aab8b0' }}>
-                    Click an object below to locate in 3D
+                    Marker positions are illustrative
                   </span>
                 </div>
               </div>
@@ -708,7 +998,7 @@ export default function App() {
                       <div>
                         <b>{item.label}</b>
                         <small>
-                          {getDepth(item.label)} away · {item.latest?.location || 'Desk'}
+                          {getDepth(item)} · {item.latest.location}
                         </small>
                       </div>
                     </div>
@@ -716,7 +1006,7 @@ export default function App() {
                 })}
 
                 <div className="depth-label">
-                  DEPTH MAP · {spaceItems.length} OBJECTS ANCHORED IN 3D
+                  ROOM MAP · {spaceItems.length} OBJECTS
                 </div>
               </div>
 
@@ -749,7 +1039,7 @@ export default function App() {
                     </span>
                     <span>
                       Locating: <strong>{activeTargetItem.label}</strong> in{' '}
-                      <strong>{activeTargetItem.latest?.room}</strong> ({activeTargetItem.latest?.location}) · Depth {getDepth(activeTargetItem.label)}
+                      <strong>{activeTargetItem.latest.room}</strong> ({activeTargetItem.latest.location}) · Spatial estimate: {getDepth(activeTargetItem)}
                     </span>
                   </div>
                   <button
@@ -786,8 +1076,8 @@ export default function App() {
 
             <div className="object-grid">
               {spaceItems.map((item) => {
-                const badge = getMatchBadge(item.label);
-                const depth = getDepth(item.label);
+                const badge = getSourceBadge(item);
+                const depth = getDepth(item);
                 const isSelected = item.id === activeMapObjectId;
                 return (
                   <article
@@ -798,7 +1088,7 @@ export default function App() {
                     <div className="image-wrap">
                       {session?.token ? (
                         <EvidenceImage
-                          observation={item.latest}
+                          observation={item.last_visual}
                           token={session.token}
                           highlight={false}
                         />
@@ -829,7 +1119,7 @@ export default function App() {
                       <div className="object-meta">
                         <span>
                           <i className={badge.color}></i>
-                          {depth} depth
+                          Spatial: {depth}
                         </span>
                         <span>{timeAgo(item.latest?.observed_at || new Date().toISOString())}</span>
                       </div>
@@ -857,7 +1147,7 @@ export default function App() {
                           setPage('detail');
                         }}
                       >
-                        <span>View Description & Depth Map</span>
+                        <span>View description & evidence</span>
                         <ArrowRight size={13} />
                       </button>
                     </div>
@@ -865,7 +1155,62 @@ export default function App() {
                 );
               })}
             </div>
+            {!loading && spaceItems.length === 0 && (
+              <div className="empty-state">
+                <Boxes size={28} />
+                <h3>No objects in this space yet</h3>
+                <p>Scan a room to add saved observations to your household memory.</p>
+                <button className="secondary-button" onClick={handleOpenScanModal}>
+                  Scan a room
+                </button>
+              </div>
+            )}
           </div>
+        ) : page === 'activity' ? (
+          <section className="objects-section activity-section">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">HOUSEHOLD TIMELINE</p>
+                <h2>Recent activity</h2>
+              </div>
+            </div>
+            {loading ? (
+              <div className="empty-state">
+                <LoaderCircle className="spin" size={24} />
+                <p>Loading household activity…</p>
+              </div>
+            ) : events.length ? (
+              <div className="timeline">
+                {events.map((event) => (
+                  <button
+                    type="button"
+                    className="timeline-row"
+                    key={event.id}
+                    onClick={() => void handleOpenActivity(event)}
+                  >
+                    <span className="avatar">
+                      <Camera size={18} />
+                    </span>
+                    <span className="timeline-copy">
+                      <strong>{event.label || 'Remembered object'}</strong>
+                      <span>{event.kind === 'seen' ? 'was seen' : 'location updated'}</span>
+                      <small>
+                        {event.room} · {event.location}
+                      </small>
+                      <small className="timeline-source">{sourceName(event.source)}</small>
+                    </span>
+                    <time dateTime={event.observed_at}>{timeAgo(event.observed_at)}</time>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <History size={28} />
+                <h3>No activity yet</h3>
+                <p>Scan a room or update an object location to start your household timeline.</p>
+              </div>
+            )}
+          </section>
         ) : (
           /* ========================================================================= */
           /* Overview View (Default)                                                  */
@@ -881,7 +1226,7 @@ export default function App() {
                     <h2>{latestScanRoom}</h2>
                   </div>
                   <span className="live-dot">
-                    <i></i> Scanned 12 min ago
+                    <i></i> {latestMemory ? `Updated ${timeAgo(latestMemory.latest.observed_at)}` : 'No scans yet'}
                   </span>
                 </div>
 
@@ -908,20 +1253,20 @@ export default function App() {
                       <span className="marker-dot"></span>
                       <div>
                         <b>{item.label}</b>
-                        <small>{getDepth(item.label)} away</small>
+                        <small>{getDepth(item)}</small>
                       </div>
                     </div>
                   ))}
 
                   <div className="depth-label">
-                    DEPTH MAP · {items.length ? `${items.length} OBJECTS` : '32 OBJECTS'}
+                    SPATIAL MAP · {items.length} OBJECTS
                   </div>
                 </div>
 
                 <div className="scene-foot">
                   <span>
                     <Boxes size={16} />
-                    {items.length || 32} objects recognized
+                    {items.length} objects remembered
                   </span>
                   <button
                     type="button"
@@ -946,23 +1291,52 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="chat-bubble">{museAnswer}</div>
+                <div className="chat-bubble" aria-live="polite">
+                  {museBusy ? 'Checking your household memories…' : museAnswer}
+                </div>
+                {museError && (
+                  <p className="error" role="alert">
+                    {museError}
+                  </p>
+                )}
+                {!!museMatches.length && (
+                  <div className="muse-results" aria-label="Matching memories">
+                    {museMatches.map((item) => (
+                      <button
+                        type="button"
+                        key={item.id}
+                        onClick={() => {
+                          setSelectedObject(item);
+                          setPage('detail');
+                        }}
+                      >
+                        <strong>{item.label}</strong>
+                        <span>
+                          {item.latest.room} · {item.latest.location}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div className="suggestions">
                   <button
                     type="button"
+                    disabled={!session || museBusy}
                     onClick={() => handleAskMuse('Where are my house keys?')}
                   >
                     Where are my house keys?
                   </button>
                   <button
                     type="button"
+                    disabled={!session || museBusy}
                     onClick={() => handleAskMuse('What did I leave in the studio?')}
                   >
                     What did I leave in the studio?
                   </button>
                   <button
                     type="button"
+                    disabled={!session || museBusy}
                     onClick={() => handleAskMuse('Where is the blue water bottle?')}
                   >
                     Where is the blue water bottle?
@@ -973,7 +1347,7 @@ export default function App() {
                   className="ask-form"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    handleAskMuse(museInput);
+                    void handleAskMuse(museInput);
                   }}
                 >
                   <input
@@ -981,14 +1355,20 @@ export default function App() {
                     aria-label="Ask Muse"
                     value={museInput}
                     onChange={(e) => setMuseInput(e.target.value)}
+                    disabled={!session || museBusy}
                   />
-                  <button type="submit" className="send" aria-label="Send query">
-                    <ArrowRight size={16} />
+                  <button
+                    type="submit"
+                    className="send"
+                    aria-label="Send query"
+                    disabled={!session || museBusy || !museInput.trim()}
+                  >
+                    {museBusy ? <LoaderCircle className="spin" size={16} /> : <ArrowRight size={16} />}
                   </button>
                 </form>
 
                 <p className="private-note">
-                  Private to you · Muse learns only from your scans also can do mistakes.
+                  Shared with your household · memories describe the last saved observation.
                 </p>
               </aside>
             </section>
@@ -1017,8 +1397,8 @@ export default function App() {
 
               <div className="object-grid">
                 {filteredItems.map((item) => {
-                  const badge = getMatchBadge(item.label);
-                  const depth = getDepth(item.label);
+                  const badge = getSourceBadge(item);
+                  const depth = getDepth(item);
                   return (
                     <article
                       key={item.id}
@@ -1031,7 +1411,7 @@ export default function App() {
                       <div className="image-wrap">
                         {session?.token ? (
                           <EvidenceImage
-                            observation={item.latest}
+                            observation={item.last_visual}
                             token={session.token}
                             highlight={false}
                           />
@@ -1055,7 +1435,7 @@ export default function App() {
                         <div className="object-meta">
                           <span>
                             <i className={badge.color}></i>
-                            {depth} depth
+                            Spatial: {depth}
                           </span>
                           <span>{timeAgo(item.latest?.observed_at || new Date().toISOString())}</span>
                         </div>
@@ -1064,6 +1444,28 @@ export default function App() {
                   );
                 })}
               </div>
+              {!loading && filteredItems.length === 0 && (
+                <div className="empty-state">
+                  <Search size={28} />
+                  <h3>{query || roomFilter !== 'All rooms' ? 'No matching memories' : 'No memories yet'}</h3>
+                  <p>
+                    {query || roomFilter !== 'All rooms'
+                      ? 'Try another search or clear the room filter.'
+                      : 'Scan a room to begin building your household memory.'}
+                  </p>
+                  <button
+                    className="secondary-button"
+                    onClick={() => {
+                      setQuery('');
+                      setRoomFilter('All rooms');
+                      if (!health?.vision_provider || !session) setError('Start the API to scan and save memories.');
+                      else handleOpenScanModal();
+                    }}
+                  >
+                    {query || roomFilter !== 'All rooms' ? 'Clear filters' : 'Scan a room'}
+                  </button>
+                </div>
+              )}
             </section>
           </>
         )}
@@ -1261,29 +1663,12 @@ export default function App() {
                   </button>
                 </div>
 
-                <select
-                  className="camera-select"
-                  value={cameraDevice}
-                  onChange={(e) => setCameraDevice(e.target.value)}
-                >
-                  <option value="iPhone 15 Pro Camera (USB / Virtual)">
-                    iPhone 15 Pro Camera (USB / Virtual)
-                  </option>
-                  <option value="FaceTime HD Camera">FaceTime HD Camera (Built-in)</option>
-                  <option value="Living Room Cam 01 (RTSP Stream)">
-                    Living Room Cam 01 (RTSP Stream)
-                  </option>
-                </select>
-
                 {session?.token && (
                   <CapturePanel
                     token={session.token}
                     health={health}
                     selectedRoom={scanRoom}
-                    onSaved={() => {
-                      setScanModal(false);
-                      setRevision((r) => r + 1);
-                    }}
+                    onSaved={() => setRevision((r) => r + 1)}
                   />
                 )}
               </div>
@@ -1321,18 +1706,18 @@ export default function App() {
 
             <div style={{ display: 'grid', gap: 14, fontSize: 13, color: '#555', marginTop: 10 }}>
               <p>
-                <strong>1. Metric 3D Depth Sensing:</strong> Each frame is processed with
-                Apple Depth Pro / Depth Anything to compute metric distances (in meters) for every
-                recognized object.
+                <strong>1. Save an observation:</strong> Camera mode can preview frames or analyze
+                a room when vision is configured. The sample observation is labeled as an
+                illustration.
               </p>
               <p>
-                <strong>2. Multimodal Embeddings:</strong> We calculate SigLIP-So400M vision
-                embeddings to identify objects across varied angles and lighting.
+                <strong>2. Search saved evidence:</strong> Search and Ask Muse use household
+                observations. Optional assistant configuration enables conversational responses.
               </p>
               <p>
-                <strong>3. Privacy-First Household Memory:</strong> Your visual memory is
-                processed locally or encrypted in your household vault, allowing you to ask Muse
-                where you left everyday items.
+                <strong>3. Shared household memory:</strong> Records are stored in the configured
+                SQLite or SpacetimeDB memory backend. A saved location is where an item was last
+                observed, not proof that it is still there.
               </p>
             </div>
           </div>
@@ -1344,7 +1729,9 @@ export default function App() {
         <div
           className="modal-backdrop"
           role="presentation"
-          onClick={() => setProfileModal(false)}
+          onClick={() => {
+            if (session) setProfileModal(false);
+          }}
         >
           <div
             className="scan-modal"
@@ -1355,46 +1742,34 @@ export default function App() {
             <div className="modal-head">
               <div>
                 <p className="eyebrow">HOUSEHOLD SPACE</p>
-                <h2>Switch Member Profile</h2>
+                <h2>{session ? 'Switch household member' : 'Join the household'}</h2>
               </div>
               <button
                 type="button"
                 className="close-button"
                 onClick={() => setProfileModal(false)}
+                disabled={!session}
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-              {(['alex', 'pree', 'kyuran'] as Profile[]).map((prof) => (
-                <button
-                  key={prof}
-                  type="button"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: 12,
-                    background: session?.member?.id === prof ? '#e4e9d9' : '#fff',
-                    border: '1px solid #ddd',
-                    borderRadius: 10,
-                    fontWeight: 600,
-                  }}
-                  onClick={() => handleSwitchProfile(prof)}
-                >
-                  <User size={18} />
-                  <span style={{ textTransform: 'capitalize' }}>
-                    {prof === 'alex' ? 'Alex Morgan' : prof === 'pree' ? 'Pree' : 'Kyuran'}
-                  </span>
-                  {session?.member?.id === prof && (
-                    <span style={{ marginLeft: 'auto', fontSize: 12, color: '#32443d' }}>
-                      Active
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
+            <GuestEntry
+              onJoin={(name) => joinGuest(name)}
+              onSelect={(id) => joinGuest('', id)}
+              currentUserId={session?.member.id}
+              switching={switchingProfile}
+            />
+            {session && (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={switchingProfile}
+                onClick={() => void leaveGuest()}
+              >
+                Leave guest session
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1423,7 +1798,7 @@ export default function App() {
             <div style={{ height: '580px', background: '#0d1511', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {session?.token && (
                 <EvidenceImage
-                  observation={selectedObject.latest}
+                  observation={selectedObject.last_visual}
                   token={session.token}
                   highlight={true}
                   depthMode={photoMode === 'depth'}

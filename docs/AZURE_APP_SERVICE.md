@@ -44,6 +44,7 @@ In Azure Portal → App Services → your application:
 - Use **Publish: Code**, **Linux**, **Python 3.12**, and your existing Basic plan.
 - Keep **one instance**. Camera jobs have process-local state.
 - Enable **Always On** and **HTTPS Only**.
+- Keep automatic **Application Insights** instrumentation disabled for this deployment: set `ApplicationInsightsAgent_EXTENSION_VERSION=disabled` under Environment variables. Its bundled Python dependencies caused a confirmed startup conflict with this app. App Service runtime logs remain available; automatic Application Insights telemetry is disabled.
 - Under Settings → Configuration → General settings, enter this **Startup Command**:
 
 ```text
@@ -131,10 +132,37 @@ If startup fails, inspect Deployment Center → Logs and Monitoring → Log stre
 | `No module named commonplace_api`                     | Remote build setting and dependency-install logs.                  |
 | `Frontend build is missing`                           | Rebuild using the packaging script and redeploy.                   |
 | SQLite disk or locking error                          | DATA_DIR must be `/tmp/remi`, with one instance.                   |
+| `CAMERA_SPACETIMEDB_URL must be an HTTP(S) server origin` | Add `CAMERA_SPACETIMEDB_URL=https://maincloud.spacetimedb.com`; the camera adapter needs its own URL even when `SPACETIMEDB_URL` is already set. |
 | User list/upload/recognition failure                  | Matching remote URL, database ID, permissions, keys and model IDs. |
 | Old browser shows no updates after server replacement | Start a fresh guest session as described above.                    |
 
 Health reports configuration, not successful external-provider calls. Verify an actual user selection, scan/upload, recognized object, second-browser update, typed chat and voice on the deployed site.
+
+### Startup timeout with `typing_extensions` under `/agents/python`
+
+The deployment can finish installing dependencies but fail to start with:
+
+```text
+ImportError: cannot import name 'sentinel' from 'typing_extensions' (/agents/python/common/typing_extensions.py)
+```
+
+This means the automatic Application Insights agent loaded its bundled dependency ahead of the app's installed version. Disable that agent without changing application dependencies:
+
+```bash
+az webapp config appsettings set \
+  --resource-group remi-rg \
+  --name remi \
+  --settings ApplicationInsightsAgent_EXTENSION_VERSION=disabled \
+  --output none
+```
+
+Changing the setting restarts the app. Check the default hostname's `/api/health` after startup. If the process remains stopped, restart it from Azure Overview and inspect the latest startup logs:
+
+```bash
+az webapp log startup show --name remi --resource-group remi-rg
+```
+
+No new ZIP is needed when the only failure was this agent conflict. Azure's support team documents [Python dependency conflicts with the automatic monitoring agent](https://azureossd.github.io/2025/10/14/Python-on-App-Service-Linux-Depedency-conflicts-when-using-the-app-insights-codeless-agent/index.html). Custom-domain certificate binding does not resolve Python import errors.
 
 ## 6. Point GoDaddy DNS to Azure
 

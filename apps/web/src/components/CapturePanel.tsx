@@ -72,20 +72,46 @@ export default function CapturePanel({
   token,
   health,
   onSaved,
+  compact = false,
   selectedRoom = 'Living room',
 }: {
   token: string;
   health: Health | null;
   onSaved: () => void;
+  compact?: boolean;
   selectedRoom?: string;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const mounted = useRef(true);
+  const saved = useRef(onSaved);
+  saved.current = onSaved;
+  const task = useRef<{
+    id: number;
+    active: boolean;
+    opening: boolean;
+    busy: boolean;
+    stream?: MediaStream;
+    timer?: ReturnType<typeof setInterval>;
+    request?: AbortController;
+    scanId?: string;
+    processed?: number;
+  }>({ id: 0, active: false, opening: false, busy: false });
   const [room, setRoom] = useState(selectedRoom);
   useEffect(() => {
     setRoom(selectedRoom);
   }, [selectedRoom]);
-  const [camera, setCamera] = useState(false);
+  const [seconds, setSeconds] = useState(5);
+  const autoAttempted = useRef(false);
+  const modeChosen = useRef(false);
+  const [mode, setMode] = useState<'memory' | 'preview'>(
+    health?.vision_provider === 'gemini' ? 'memory' : 'preview',
+  );
+  const [facing, setFacing] = useState('environment');
+  const [jpegQuality, setJpegQuality] = useState(78);
+  const [resolution, setResolution] = useState('Camera is off');
+  const [stats, setStats] = useState<CameraStats | null>(null);
+  const [active, setActive] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('Choose how you’d like to use the camera, then turn it on.');

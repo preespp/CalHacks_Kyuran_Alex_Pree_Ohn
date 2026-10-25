@@ -7,6 +7,7 @@ export interface Session {
   token: string;
   member: Member;
 }
+export type Profile = 'alex' | 'pree' | 'kyuran';
 export interface Health {
   vision_provider: 'demo' | 'gemini';
   assistant_provider: 'disabled' | 'gemini' | 'muse';
@@ -27,6 +28,7 @@ export interface Observation {
   observed_at: string;
   kind: 'seen' | 'moved' | 'found' | 'correction';
   label?: string;
+  actor_name?: string;
 }
 export interface MemoryObject {
   id: string;

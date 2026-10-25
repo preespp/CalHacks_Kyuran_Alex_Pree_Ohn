@@ -7,15 +7,20 @@ export default function CapturePanel({
   token,
   health,
   onSaved,
+  selectedRoom = 'Living room',
 }: {
   token: string;
   health: Health | null;
   onSaved: () => void;
+  selectedRoom?: string;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const mounted = useRef(true);
-  const [room, setRoom] = useState('Living room');
+  const [room, setRoom] = useState(selectedRoom);
+  useEffect(() => {
+    setRoom(selectedRoom);
+  }, [selectedRoom]);
   const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import hashlib
+import io
 import re
 from typing import Optional
 from uuid import uuid4
@@ -96,6 +97,41 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except Exception:
             raise HTTPException(502, "Image storage is unavailable")
         return Response(raw, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
+
+    @app.get("/api/images/{key}/depth")
+    def image_depth(key: str, actor=Depends(member)):
+        if not re.fullmatch(r"[a-zA-Z0-9_-]+(?:\.jpg)?", key) or not store.owns_image(actor["household_id"], key):
+            raise HTTPException(404, "Image not found")
+        if key == "demo-scene":
+            depth_file = ROOT / "demo" / "desk_depth.jpg"
+            if depth_file.exists():
+                return Response(depth_file.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
+            return Response((ROOT / "demo" / "desk.svg").read_bytes(), media_type="image/svg+xml", headers={"Cache-Control": "private, max-age=300"})
+        try:
+            raw = storage.get(key)
+        except FileNotFoundError:
+            raise HTTPException(404, "Image not found")
+        except Exception:
+            raise HTTPException(502, "Image storage is unavailable")
+
+        # Check if precomputed depth exists, otherwise compute on the fly
+        depth_key = key.replace(".jpg", "_depth.jpg")
+        try:
+            depth_raw = storage.get(depth_key)
+            return Response(depth_raw, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
+        except Exception:
+            pass
+
+        try:
+            from .depth import estimate_depth, colorize_depth_map
+            est = estimate_depth(raw)
+            colored = colorize_depth_map(est["depth_array"])
+            buf = io.BytesIO()
+            colored.save(buf, format="JPEG", quality=85)
+            depth_bytes = buf.getvalue()
+            return Response(depth_bytes, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
+        except Exception:
+            return Response(raw, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
 
     @app.post("/api/demo/captures", status_code=201, response_model=CaptureResponse)
     def sample_capture(actor=Depends(member)):

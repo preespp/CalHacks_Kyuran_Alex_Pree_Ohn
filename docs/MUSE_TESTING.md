@@ -57,6 +57,15 @@ In browser Network tools, look for authenticated `POST /api/chat` calls. Respons
 
 Question audio goes to Meta for transcription. Hello recognition may use the browser vendor's speech service. Spoken replies use your device/browser voice, rather than a Meta speech-generation model. Automated audio mocks do not establish real iPhone recognition quality. See [accessible voice testing](ACCESSIBILITY.md).
 
+### Choose a different speaking voice
+
+1. Open **Ask Muse**, then expand **Voice settings** below the voice controls.
+2. Choose a **Speaking voice** and press **Preview voice** to listen. Stop any voice session first.
+3. Adjust **Speaking speed** (0.5×–1.5×) and preview again. **Device default** restores the browser's automatic voice choice.
+4. Use **Read reply**, **Talk to Muse**, or **Hello**: greetings and answers use the selected voice and speed.
+
+These preferences are saved in this browser on this device, including after refresh or guest switching. No API key, database, or additional voice service is needed for the preview. Available voices vary by browser/device and may take a moment to load. If a saved voice is no longer available, the app uses the device default until it becomes available again or you choose another. If browser storage is blocked, preferences last only while the app is open. Device voices may themselves use an online speech service.
+
 ## Test shared memory with two guests
 
 Open a second browser session and enter another name. Both guests use the prototype household. Update an object's location through a working room scan, or use a location report on an existing record when testing without Gemini. Ask about that object from the first session and confirm a fresh answer reflects the latest saved evidence. It should not claim who placed the object. Earlier answers remain snapshots; ask again after an update.

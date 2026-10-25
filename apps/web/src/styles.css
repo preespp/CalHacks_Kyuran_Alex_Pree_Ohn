@@ -1804,6 +1804,36 @@ h1 {
 .voice-toggle input {
   accent-color: var(--green);
 }
+.voice-settings {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.voice-settings summary {
+  cursor: pointer;
+  color: var(--green);
+}
+.voice-settings-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin: 16px 0;
+}
+.voice-settings-fields .field-label {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 100%;
+}
+.voice-settings-fields select,
+.voice-settings-fields input {
+  width: 100%;
+}
+.voice-settings-fields input[type='range'] {
+  padding: 8px 0;
+  accent-color: var(--green);
+}
 .speech-reply {
   display: inline-flex;
   align-items: center;

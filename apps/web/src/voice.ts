@@ -266,9 +266,27 @@ export function useVoiceInput(
 }
 
 export type SpeechOutcome = 'ended' | 'blocked' | 'canceled';
+const SPEECH_PREFERENCES_KEY = 'commonplace.speech-output';
+type SpeechPreferences = { voiceURI: string; rate: number };
+
+function loadSpeechPreferences(): SpeechPreferences {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SPEECH_PREFERENCES_KEY) || '{}');
+    return {
+      voiceURI: typeof saved?.voiceURI === 'string' ? saved.voiceURI : '',
+      rate:
+        typeof saved?.rate === 'number' && saved.rate >= 0.5 && saved.rate <= 1.5 ? saved.rate : 1,
+    };
+  } catch {
+    return { voiceURI: '', rate: 1 };
+  }
+}
+
 export function useSpeechOutput() {
   const [speaking, setSpeaking] = useState(false);
   const [error, setError] = useState('');
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [preferences, setPreferences] = useState(loadSpeechPreferences);
   const current = useRef<{
     message: SpeechSynthesisUtterance;
     resolve: (outcome: SpeechOutcome) => void;
@@ -276,6 +294,23 @@ export function useSpeechOutput() {
   } | null>(null);
   const supported =
     typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
+  useEffect(() => {
+    if (!supported) return;
+    const refresh = () => setVoices(speechSynthesis.getVoices());
+    refresh();
+    // Some browsers populate voices asynchronously or after a voice download.
+    speechSynthesis.addEventListener('voiceschanged', refresh);
+    return () => speechSynthesis.removeEventListener('voiceschanged', refresh);
+  }, [supported]);
+  function updatePreferences(update: Partial<SpeechPreferences>) {
+    const next = { ...preferences, ...update };
+    setPreferences(next);
+    try {
+      localStorage.setItem(SPEECH_PREFERENCES_KEY, JSON.stringify(next));
+    } catch {
+      // Speech remains usable when this browser blocks persistent storage.
+    }
+  }
   function stop() {
     const task = current.current;
     current.current = null;
@@ -296,6 +331,12 @@ export function useSpeechOutput() {
     setSpeaking(true);
     return new Promise((resolve) => {
       const message = new SpeechSynthesisUtterance(text);
+      const selectedVoice = voices.find((voice) => voice.voiceURI === preferences.voiceURI);
+      if (selectedVoice) {
+        message.voice = selectedVoice;
+        message.lang = selectedVoice.lang;
+      }
+      message.rate = preferences.rate;
       const task = {
         message,
         resolve,
@@ -331,6 +372,13 @@ export function useSpeechOutput() {
     supported,
     speaking,
     error,
+    voices,
+    voiceURI: preferences.voiceURI,
+    rate: preferences.rate,
+    setVoice: (voiceURI: string) => updatePreferences({ voiceURI }),
+    setRate: (rate: number) => {
+      if (Number.isFinite(rate)) updatePreferences({ rate: Math.min(1.5, Math.max(0.5, rate)) });
+    },
     speak,
     clearError: () => setError(''),
     stop: () => {

@@ -4,15 +4,28 @@ export async function installVoiceMocks(page: Page) {
   await page.addInitScript(() => {
     type Utterance = {
       text: string;
+      voice?: SpeechSynthesisVoice | null;
+      rate?: number;
+      lang?: string;
       onstart?: (() => void) | null;
       onend?: (() => void) | null;
       onerror?: (() => void) | null;
     };
+    const voiceEvents = new EventTarget();
     const state = {
       stopped: 0,
       streams: 0,
       recordings: 0,
       spoken: [] as string[],
+      speechRequests: [] as { text: string; voiceURI: string; rate: number; lang: string }[],
+      availableVoices: [
+        { voiceURI: 'test-alex', name: 'Alex', lang: 'en-US', default: true, localService: true },
+        { voiceURI: 'test-sam', name: 'Sam', lang: 'en-GB', default: false, localService: true },
+      ] as SpeechSynthesisVoice[],
+      setVoices(voices: SpeechSynthesisVoice[]) {
+        this.availableVoices = voices;
+        voiceEvents.dispatchEvent(new Event('voiceschanged'));
+      },
       canceled: 0,
       denied: false,
       amplitude: 0,
@@ -144,8 +157,17 @@ export async function installVoiceMocks(page: Page) {
     });
     Object.defineProperty(window, 'speechSynthesis', {
       value: {
+        getVoices: () => state.availableVoices,
+        addEventListener: voiceEvents.addEventListener.bind(voiceEvents),
+        removeEventListener: voiceEvents.removeEventListener.bind(voiceEvents),
         speak: (utterance: Utterance) => {
           state.spoken.push(utterance.text);
+          state.speechRequests.push({
+            text: utterance.text,
+            voiceURI: utterance.voice?.voiceURI || '',
+            rate: utterance.rate ?? 1,
+            lang: utterance.lang || '',
+          });
           state.utterance = utterance;
           if (state.blocked) utterance.onerror?.();
           else utterance.onstart?.();
@@ -164,6 +186,9 @@ export interface VoiceTestState {
   streams: number;
   recordings: number;
   spoken: string[];
+  speechRequests: { text: string; voiceURI: string; rate: number; lang: string }[];
+  availableVoices: SpeechSynthesisVoice[];
+  setVoices: (voices: SpeechSynthesisVoice[]) => void;
   denied: boolean;
   amplitude: number;
   blocked: boolean;

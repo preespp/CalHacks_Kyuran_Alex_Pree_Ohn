@@ -614,6 +614,68 @@ export default function AssistantPanel({
           </button>
         )}
       </div>
+      <details className="voice-settings">
+        <summary>Voice settings</summary>
+        <div className="voice-settings-fields">
+          <label className="field-label" htmlFor="assistant-voice">
+            Speaking voice
+            <select
+              id="assistant-voice"
+              value={speech.voiceURI}
+              disabled={!speech.supported || speech.speaking || conversation}
+              onChange={(event) => speech.setVoice(event.target.value)}
+              aria-describedby="assistant-voice-help"
+            >
+              <option value="">Device default</option>
+              {speech.voiceURI && !speech.voices.some((v) => v.voiceURI === speech.voiceURI) && (
+                <option value={speech.voiceURI}>
+                  Saved voice unavailable — using device default
+                </option>
+              )}
+              {speech.voices.map((voice) => (
+                <option key={voice.voiceURI} value={voice.voiceURI}>
+                  {voice.name} ({voice.lang})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-label" htmlFor="assistant-speaking-speed">
+            Speaking speed · {speech.rate.toFixed(1)}×
+            <input
+              id="assistant-speaking-speed"
+              type="range"
+              min="0.5"
+              max="1.5"
+              step="0.1"
+              value={speech.rate}
+              aria-valuetext={`${speech.rate.toFixed(1)} times normal speed`}
+              disabled={!speech.supported || speech.speaking || conversation}
+              onChange={(event) => speech.setRate(Number(event.target.value))}
+            />
+          </label>
+          <button
+            className="secondary-button"
+            disabled={
+              !speech.supported ||
+              speech.speaking ||
+              conversation ||
+              !!pending ||
+              voice.state !== 'idle'
+            }
+            onClick={() => {
+              void speech.speak('Hello, I’m Muse. I can help you find things around your home.');
+            }}
+          >
+            <Volume2 size={17} /> Preview voice
+          </button>
+        </div>
+        <p id="assistant-voice-help" className="fine-print">
+          Choose a voice, then preview it. Your choice and speed are saved on this device for
+          greetings and replies. Available voices depend on your browser and device.
+          {!speech.supported &&
+            ' Spoken replies are unavailable in this browser; typing still works.'}
+        </p>
+      </details>
       {!conversation && voice.state !== 'idle' && (
         <p className="fine-print" role="status">
           {voice.state === 'recording'

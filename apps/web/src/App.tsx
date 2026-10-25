@@ -8,7 +8,9 @@ import {
   ChevronRight,
   Compass,
   Grid,
+  History,
   Info,
+  LoaderCircle,
   MapPin,
   Maximize2,
   MoreHorizontal,
@@ -22,7 +24,7 @@ import { api, timeAgo } from './api';
 import CapturePanel from './components/CapturePanel';
 import EvidenceImage from './components/EvidenceImage';
 import { RotatingText } from './components/reactbits';
-import type { Health, MemoryObject, Profile, Session } from './types';
+import type { Health, MemoryObject, Observation, Profile, Session } from './types';
 
 function loadSession(): Session | null {
   try {
@@ -31,6 +33,12 @@ function loadSession(): Session | null {
   } catch {
     return null;
   }
+}
+
+function sourceName(source?: Observation['source']) {
+  if (source === 'gemini') return 'Gemini photo';
+  if (source === 'reported') return 'Household update';
+  return 'Sample scene';
 }
 
 // Preset room choices for Pre-Scan step
@@ -76,10 +84,19 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession);
   const [health, setHealth] = useState<Health | null>(null);
   const [items, setItems] = useState<MemoryObject[]>([]);
+  const [events, setEvents] = useState<Observation[]>([]);
   const [query, setQuery] = useState('');
   const [roomFilter, setRoomFilter] = useState('All rooms');
   const [selectedObject, setSelectedObject] = useState<MemoryObject | null>(null);
-  const [page, setPage] = useState<'overview' | 'objects' | 'detail'>('overview');
+  const [page, setPage] = useState<'overview' | 'objects' | 'activity' | 'detail'>('overview');
+  const [toast, setToast] = useState('');
+
+  // Location update state for detail page
+  const [noteRoom, setNoteRoom] = useState('Living room');
+  const [noteLocation, setNoteLocation] = useState('');
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [noteError, setNoteError] = useState('');
+  const [objectHistory, setObjectHistory] = useState<Observation[]>([]);
 
   // Space categorization & Interactive 3D map in My Objects page
   const [activeSpace, setActiveSpace] = useState<string>('All');
@@ -126,28 +143,69 @@ export default function App() {
     };
   }, [session, revision]);
 
-  // Fetch objects and health
+  // Sync selected object location inputs & history
+  useEffect(() => {
+    if (!selectedObject) return;
+    setNoteRoom(selectedObject.latest.room || 'Living room');
+    setNoteLocation(selectedObject.latest.location || '');
+    setNoteError('');
+    if (!session?.token) return;
+
+    let cancelled = false;
+    api<{ observations: Observation[] }>(`/api/objects/${selectedObject.id}/history`, session.token)
+      .then((res) => {
+        if (!cancelled) {
+          setObjectHistory(res.observations);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedObject?.id, selectedObject?.latest?.id, session?.token, revision]);
+
+  // Toast timer
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(''), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  // Polling objects, activity, and health every 5 seconds
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
+    const controller = new AbortController();
+
     async function loadData() {
       try {
-        const [objRes, healthRes] = await Promise.all([
-          api<{ objects: MemoryObject[] }>(`/api/objects`, session!.token),
-          api<Health>('/api/health'),
+        const [objRes, actRes, healthRes] = await Promise.all([
+          api<{ objects: MemoryObject[] }>('/api/objects', session!.token, { signal: controller.signal }),
+          api<{ events: Observation[] }>('/api/activity', session!.token, { signal: controller.signal }),
+          api<Health>('/api/health', undefined, { signal: controller.signal }),
         ]);
         if (!cancelled) {
           setItems(objRes.objects);
+          setEvents(actRes.events);
           setHealth(healthRes);
           if (objRes.objects.length > 0 && !activeMapObjectId) {
             setActiveMapObjectId(objRes.objects[0].id);
           }
         }
-      } catch {}
+      } catch {
+        // ignore aborted
+      }
     }
+
     void loadData();
+    const timer = setInterval(() => {
+      void loadData();
+    }, 5000);
+
     return () => {
       cancelled = true;
+      controller.abort();
+      clearInterval(timer);
     };
   }, [session, revision]);
 
@@ -186,11 +244,20 @@ export default function App() {
     return map;
   }, [items]);
 
-  // Active items for "My Objects" 3D Map
+  // Active items for "My Objects" 3D Map (also filtered by search query)
   const spaceItems = useMemo(() => {
-    if (activeSpace === 'All') return items;
-    return items.filter((item) => (item.latest?.room || 'Living room') === activeSpace);
-  }, [items, activeSpace]);
+    let list = activeSpace === 'All' ? items : items.filter((item) => (item.latest?.room || 'Living room') === activeSpace);
+    const q = query.toLowerCase().trim();
+    if (q) {
+      list = list.filter((item) =>
+        item.label.toLowerCase().includes(q) ||
+        item.latest?.room.toLowerCase().includes(q) ||
+        item.latest?.location.toLowerCase().includes(q) ||
+        item.appearance.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [items, activeSpace, query]);
 
   // Keep active map object aligned with space
   useEffect(() => {
@@ -210,7 +277,7 @@ export default function App() {
 
     const words = prompt.split(/\s+/).filter((w) => w.length > 2);
     const found = items.find((item) => {
-      const text = `${item.label} ${item.latest?.room} ${item.latest?.location}`.toLowerCase();
+      const text = `${item.label} ${item.latest?.room} ${item.latest?.location} ${item.appearance}`.toLowerCase();
       return words.some((w) => text.includes(w));
     });
 
@@ -228,6 +295,9 @@ export default function App() {
   }
 
   function handleOpenScanModal() {
+    if (selectedObject?.latest?.room) {
+      setScanRoom(selectedObject.latest.room);
+    }
     setScanStep('select-room');
     setScanModal(true);
   }
@@ -240,20 +310,64 @@ export default function App() {
     setScanStep('capture');
   }
 
-  function handleSwitchProfile(profile: Profile) {
-    sessionStorage.removeItem('commonplace-session');
-    setSession(null);
-    setProfileModal(false);
-    api<Session>('/api/demo/session', undefined, {
-      method: 'POST',
-      body: JSON.stringify({ profile }),
-    })
-      .then((val) => {
-        sessionStorage.setItem('commonplace-session', JSON.stringify(val));
-        setSession(val);
-        setRevision((r) => r + 1);
-      })
-      .catch(() => {});
+  // Location update report handler
+  async function handleReportLocation(kind: 'moved' | 'found') {
+    if (!selectedObject || !session?.token) return;
+    if (!noteLocation.trim()) {
+      setNoteError('Please describe where the object is now.');
+      return;
+    }
+    setNoteBusy(true);
+    setNoteError('');
+    try {
+      const res = await api<{ observations: Observation[] }>(
+        `/api/objects/${selectedObject.id}/notes`,
+        session.token,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            room: noteRoom.trim(),
+            location: noteLocation.trim(),
+            kind,
+          }),
+        },
+      );
+      setObjectHistory(res.observations);
+      const updatedLatest = res.observations[0];
+      const updatedObject: MemoryObject = {
+        ...selectedObject,
+        latest: updatedLatest,
+      };
+      setSelectedObject(updatedObject);
+      setItems((prev) => prev.map((it) => (it.id === updatedObject.id ? updatedObject : it)));
+      setRevision((r) => r + 1);
+      setToast(
+        kind === 'found'
+          ? `Marked ${updatedObject.label} as found in ${updatedLatest.room}!`
+          : `Updated location for ${updatedObject.label} to ${updatedLatest.room}.`,
+      );
+    } catch (err) {
+      setNoteError(err instanceof Error ? err.message : 'Could not save location update.');
+    } finally {
+      setNoteBusy(false);
+    }
+  }
+
+  // Profile switch handler
+  async function handleSwitchProfile(profile: Profile) {
+    try {
+      const val = await api<Session>('/api/demo/session', undefined, {
+        method: 'POST',
+        body: JSON.stringify({ profile }),
+      });
+      sessionStorage.setItem('commonplace-session', JSON.stringify(val));
+      setSession(val);
+      setProfileModal(false);
+      setRevision((r) => r + 1);
+      setToast(`Switched household member to ${val.member.name}`);
+    } catch (err) {
+      console.error('Profile switch error:', err);
+    }
   }
 
   const currentDate = new Intl.DateTimeFormat('en-US', {
@@ -298,7 +412,19 @@ export default function App() {
           >
             <Boxes size={18} />
             <span>My objects</span>
-            <span className="count">{items.length || 48}</span>
+            <span className="count">{items.length}</span>
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${page === 'activity' ? 'active' : ''}`}
+            onClick={() => {
+              setPage('activity');
+              setSelectedObject(null);
+            }}
+          >
+            <History size={18} />
+            <span>Activity</span>
+            <span className="count">{events.length}</span>
           </button>
           <button
             type="button"
@@ -319,20 +445,21 @@ export default function App() {
             <div className="progress">
               <span style={{ width: '68%' }}></span>
             </div>
-            <p>3,284 objects remembered</p>
+            <p>{items.length} objects remembered</p>
           </div>
 
           <div
             className="profile"
             onClick={() => setProfileModal(true)}
             title="Click to switch profile"
+            style={{ cursor: 'pointer' }}
           >
             <div className="avatar">
               {session?.member?.name?.slice(0, 2).toUpperCase() || 'AM'}
             </div>
             <div>
               <strong>{session?.member?.name || 'Alex Morgan'}</strong>
-              <span>Personal space</span>
+              <span>Household member · Switch</span>
             </div>
             <MoreHorizontal size={18} />
           </div>
@@ -611,6 +738,174 @@ export default function App() {
                     </div>
                   </dl>
                 </div>
+
+                {/* Card 3: KEEP HOUSEHOLD UPDATED (Update Location & Found it) */}
+                <div className="metadata-card update-location-card">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div>
+                      <p className="eyebrow">KEEP HOUSEHOLD IN THE LOOP</p>
+                      <h2 style={{ fontSize: 17, fontWeight: 700, margin: '2px 0 0', color: '#1a2720' }}>
+                        Update Location
+                      </h2>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: '3px 8px',
+                        borderRadius: 10,
+                        background: '#edf4e8',
+                        color: '#346b3f',
+                      }}
+                    >
+                      {sourceName(selectedObject.latest.source)}
+                    </span>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleReportLocation('moved');
+                    }}
+                  >
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#736e67', marginBottom: 6 }}>
+                      Room
+                      <select
+                        value={noteRoom}
+                        onChange={(e) => setNoteRoom(e.target.value)}
+                        style={{
+                          width: '100%',
+                          marginTop: 4,
+                          padding: '9px 12px',
+                          borderRadius: 8,
+                          border: '1px solid #dcd7ce',
+                          background: '#fff',
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: '#262420',
+                        }}
+                      >
+                        {['Living room', 'Kitchen', 'Bathroom', 'Bedroom', 'Office', 'Entryway', 'Dining room', 'Studio'].map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#736e67', margin: '12px 0 14px' }}>
+                      Where is it now?
+                      <input
+                        required
+                        maxLength={300}
+                        value={noteLocation}
+                        onChange={(e) => setNoteLocation(e.target.value)}
+                        placeholder="e.g. On the walnut console tray, top drawer..."
+                        style={{
+                          width: '100%',
+                          marginTop: 4,
+                          padding: '9px 12px',
+                          borderRadius: 8,
+                          border: '1px solid #dcd7ce',
+                          background: '#fff',
+                          fontSize: 13,
+                          color: '#262420',
+                        }}
+                      />
+                    </label>
+
+                    {noteError && (
+                      <p style={{ color: '#c0392b', fontSize: 11, marginBottom: 10, fontWeight: 600 }}>
+                        {noteError}
+                      </p>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        type="submit"
+                        disabled={noteBusy || !noteLocation.trim()}
+                        style={{
+                          flex: 1,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          background: '#2b3d35',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '10px 14px',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: noteBusy || !noteLocation.trim() ? 'not-allowed' : 'pointer',
+                          opacity: noteBusy || !noteLocation.trim() ? 0.6 : 1,
+                        }}
+                      >
+                        {noteBusy ? <LoaderCircle className="spin" size={14} /> : <MapPin size={14} />}
+                        <span>Update location</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={noteBusy || !noteLocation.trim()}
+                        onClick={() => void handleReportLocation('found')}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          background: '#eef5e6',
+                          color: '#2e6b36',
+                          border: '1px solid #c9dec0',
+                          borderRadius: 8,
+                          padding: '10px 14px',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: noteBusy || !noteLocation.trim() ? 'not-allowed' : 'pointer',
+                          opacity: noteBusy || !noteLocation.trim() ? 0.6 : 1,
+                        }}
+                      >
+                        <Check size={14} strokeWidth={2.5} />
+                        <span>Found it</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Card 4: OBSERVATION HISTORY */}
+                <div className="metadata-card history-card">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <p className="eyebrow">OBSERVATION HISTORY</p>
+                    <span style={{ fontSize: 11, color: '#888', fontWeight: 600 }}>{objectHistory.length} recorded</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 220, overflowY: 'auto' }}>
+                    {objectHistory.length ? (
+                      objectHistory.map((obs, idx) => (
+                        <div
+                          key={obs.id || idx}
+                          style={{
+                            padding: '8px 10px',
+                            background: idx === 0 ? '#f7faf4' : '#faf8f5',
+                            border: idx === 0 ? '1px solid #d4e5cb' : '1px solid #eee8df',
+                            borderRadius: 8,
+                            fontSize: 11,
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                            <strong style={{ color: '#263730', fontWeight: 600 }}>{obs.room}</strong>
+                            <span style={{ color: '#888', fontSize: 10 }}>{timeAgo(obs.observed_at)}</span>
+                          </div>
+                          <p style={{ margin: '0 0 4px', color: '#555' }}>{obs.location}</p>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#999' }}>
+                            <span>by {obs.actor_name}</span>
+                            <span style={{ textTransform: 'capitalize' }}>{sourceName(obs.source)}</span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p style={{ color: '#888', fontSize: 11, margin: 0 }}>No previous history recorded yet.</p>
+                    )}
+                  </div>
+                </div>
               </div>
             </section>
           </div>
@@ -864,6 +1159,130 @@ export default function App() {
                   </article>
                 );
               })}
+            </div>
+          </div>
+        ) : page === 'activity' ? (
+          /* ========================================================================= */
+          /* Household Activity Timeline View                                          */
+          /* ========================================================================= */
+          <div className="activity-page">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">HOUSEHOLD TIMELINE</p>
+                <h2>Recent activity</h2>
+                <p style={{ color: '#736e67', fontSize: 13, marginTop: 4 }}>
+                  Photo observations and member updates recorded in real time.
+                </p>
+              </div>
+            </div>
+
+            <div className="timeline-container" style={{ marginTop: 20 }}>
+              {events.length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {events.map((event) => {
+                    const matchedItem = items.find((it) => it.id === event.object_id);
+                    return (
+                      <div
+                        key={event.id}
+                        className="activity-card"
+                        style={{
+                          background: '#fff',
+                          border: '1px solid #e2ddd5',
+                          borderRadius: 14,
+                          padding: '16px 20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 16,
+                          cursor: matchedItem ? 'pointer' : 'default',
+                          transition: 'all 0.15s ease',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                        }}
+                        onClick={() => {
+                          if (matchedItem) {
+                            setSelectedObject(matchedItem);
+                            setPage('detail');
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                          <span
+                            className={`avatar avatar-${event.actor_name.toLowerCase()}`}
+                            style={{
+                              width: 38,
+                              height: 38,
+                              borderRadius: '50%',
+                              background: event.actor_name.toLowerCase().startsWith('a')
+                                ? '#415a4b'
+                                : event.actor_name.toLowerCase().startsWith('p')
+                                  ? '#7d5c41'
+                                  : '#4a5d7c',
+                              color: '#fff',
+                              display: 'grid',
+                              placeItems: 'center',
+                              fontWeight: 700,
+                              fontSize: 14,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {event.actor_name[0]}
+                          </span>
+
+                          <div>
+                            <div style={{ fontSize: 14, color: '#1a2720' }}>
+                              <strong>{event.actor_name}</strong>{' '}
+                              <span style={{ color: '#68635c' }}>
+                                {event.kind === 'seen'
+                                  ? 'remembered'
+                                  : event.kind === 'moved'
+                                    ? 'moved'
+                                    : event.kind === 'found'
+                                      ? 'found'
+                                      : 'updated'}{' '}
+                              </span>
+                              <strong style={{ color: '#274334' }}>{event.label || 'an object'}</strong>
+                            </div>
+                            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                              <span>{event.room} · {event.location}</span>
+                              <span
+                                style={{
+                                  marginLeft: 10,
+                                  background: '#eee9df',
+                                  padding: '2px 8px',
+                                  borderRadius: 8,
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {sourceName(event.source)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <time style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>
+                            {timeAgo(event.observed_at)}
+                          </time>
+                          {matchedItem && (
+                            <span style={{ color: '#274334', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              Inspect <ChevronRight size={14} />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', background: '#fff', borderRadius: 16, border: '1px solid #e0ded8' }}>
+                  <History size={36} style={{ color: '#aaa', margin: '0 auto 12px' }} />
+                  <h3 style={{ margin: 0, fontSize: 17, color: '#333' }}>No household activity recorded yet</h3>
+                  <p style={{ color: '#888', fontSize: 13, marginTop: 4 }}>
+                    New camera scans or location reports from members will appear here automatically.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -1283,6 +1702,7 @@ export default function App() {
                     onSaved={() => {
                       setScanModal(false);
                       setRevision((r) => r + 1);
+                      setToast('New scan saved! Memory updated.');
                     }}
                   />
                 )}
@@ -1431,6 +1851,35 @@ export default function App() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className="toast"
+          role="status"
+          style={{
+            position: 'fixed',
+            zIndex: 100,
+            bottom: 28,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            gap: 10,
+            alignItems: 'center',
+            background: '#20342a',
+            color: '#f0f7ea',
+            padding: '12px 20px',
+            borderRadius: 30,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+            fontSize: 13,
+            fontWeight: 600,
+            border: '1px solid rgba(255,255,255,0.12)',
+          }}
+        >
+          <Check size={16} strokeWidth={2.8} style={{ color: '#c7ed68' }} />
+          <span>{toast}</span>
         </div>
       )}
     </div>

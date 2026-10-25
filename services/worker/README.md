@@ -1,11 +1,15 @@
-# Connected Onyu vision worker
+# Connected vision worker
 
-The live web workflow now invokes `process_capture` in [pipeline.py](pipeline.py) after reading the uploaded image back from SpacetimeDB. Its validated results are committed through `commit_vision_capture` to `vision_capture`, `object_memory`, and `object_sighting`. The memory page and Muse read those same records. See [full workflow setup](../../docs/LIVE_WORKFLOW.md).
+The normal web pipeline calls `process_capture` in [pipeline.py](pipeline.py) after exact-byte database readback. It uses Gemini detections and returns validated object/sighting payloads for the remote memory adapter's atomic commit. Remi and the object list read the same resulting records. See [image pipeline](../../docs/IMAGE_PIPELINE.md).
 
-Set `MEMORY_PROVIDER=spacetimedb`, `VISION_PROVIDER=gemini`, `CAMERA_FRAME_SINK=spacetimedb` and `SEED_SAMPLE_DATA=false`. The shared database module must expose the new tables and reducer; the current team database has been updated with approval.
+The default `VISION_ENRICHMENT=geometry` requires no local PyTorch weights. It adds image zones/relations and conservatively matches unique label/appearance descriptions within a room. Ambiguous or changed descriptions may produce another candidate. `models` adds relative depth and crop embeddings:
 
-`VISION_ENRICHMENT=geometry` uses Gemini labels/boxes plus image zones, relations and conservative unique label/appearance association. Depth values/ranks are absent. It requires no PyTorch downloads. `VISION_ENRICHMENT=models` additionally uses Depth Anything and SigLIP; install `services/api[spatial]` and budget for weights, memory and inference time. Relative depth is never converted into uncalibrated meters.
+```bash
+.venv/bin/python -m pip install -e 'services/api[spatial]'
+```
 
-The original `RealtimeStreamEngine` remains a separate experimental video runner; it is not the web app's production callback. The connected path uses one Gemini call per selected image and stores real timestamps and photo references, without a fabricated contributor or example photo URL.
+That optional install can require substantial downloads, RAM and inference time; measure it on the intended host before enabling it. Depth is relative within an image and is not converted into calibrated meters. The default Azure package/configuration uses geometry mode.
 
-`camera_jobs.py` provides one active job and one latest pending frame per scan. It is still in-process: pending jobs are lost on restart. There is no distributed leasing or automatic backfill of historical images. Durable jobs, bounded retries and retention are future work.
+`RealtimeStreamEngine`, stitching and the [manual JSON experiment](../../scripts/experiments/generate_memory_json.py) are separate from the web request callback. They are not a background watcher for all uploaded historical images. Camera jobs live in the API process and pending work can be lost on restart; durable distributed jobs are not implemented.
+
+Worker geometry/matching tests now live under `services/api/tests/test_worker_relations.py` and run with `make test`, alongside pipeline integration tests. No model downloads are required for those automated checks.

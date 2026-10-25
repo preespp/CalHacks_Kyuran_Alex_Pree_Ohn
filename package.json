@@ -13,7 +13,7 @@
     "check": "npm run typecheck && npm run build",
     "test:module": "vitest run --root spacetimedb --config vitest.config.ts",
     "test:browser": "playwright test",
-    "format": "prettier --write apps/web spacetimedb tests/browser playwright.config.ts README.md docs contracts demo/README.md services/worker/README.md"
+    "format": "prettier --write apps/web spacetimedb tests/browser playwright.config.ts README.md docs contracts demo/README.md services/worker/README.md tests/README.md scripts/README.md camera_capture/README.md"
   },
   "engines": {
     "node": ">=22.12.0"

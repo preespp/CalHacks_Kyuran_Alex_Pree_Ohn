@@ -13,7 +13,7 @@ export function userFacingError(message: string, path: string): string {
       message,
     )
   )
-    return message;
+    return message.replace(/\bMuse\b/g, 'Remi');
   if (path.includes('transcrib'))
     return 'We couldn’t understand that recording. Please try again or type your question.';
   if (path === '/api/guest/users')
@@ -21,7 +21,7 @@ export function userFacingError(message: string, path: string): string {
   if (path === '/api/guest/session') return 'We couldn’t save your name. Please try again shortly.';
   if (path.startsWith('/api/camera/') || path === '/api/captures')
     return 'We couldn’t save this view. Please try starting the camera again.';
-  if (path.includes('chat')) return 'Muse is unavailable right now. Please try again shortly.';
+  if (path.includes('chat')) return 'Remi is unavailable right now. Please try again shortly.';
   return 'We couldn’t connect to your household. Please try again shortly.';
 }
 

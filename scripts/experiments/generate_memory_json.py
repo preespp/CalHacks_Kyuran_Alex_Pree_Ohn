@@ -17,6 +17,9 @@ import sys
 import time
 import cv2
 
+# Allow this opt-in experiment to import the source worker from a fresh checkout.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from commonplace_api.config import Settings
 from services.worker.pipeline import CaptureInput, process_capture
 from services.worker.stitching import stitch_images

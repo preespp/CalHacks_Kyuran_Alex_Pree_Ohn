@@ -1,74 +1,52 @@
-# Live image and shared-memory pipeline
+# Camera → database → Gemini → shared memory
 
-The camera and object-memory workflow is now connected. Follow [the full workflow and testing guide](LIVE_WORKFLOW.md) for configuration, tables, Onyu's processing, and Muse verification.
+The active API uses the team module in `camera_capture/stream_module/src/index.ts`. The alternate module in `spacetimedb/src/index.ts` has a different private-household contract and must not replace it.
 
-```mermaid
-flowchart LR
-  Camera[Camera: every 3–5 seconds] --> API[FastAPI: normalize JPEG]
-  API --> Queue[(SpacetimeDB image_stream_binary)]
-  Queue --> Read[Verify saved frame]
-  Read --> Onyu[Onyu process_capture + Gemini]
-  Onyu --> Commit[commit_vision_capture]
-  Commit --> Images[(vision_capture: retained evidence)]
-  Commit --> Objects[(object_memory: current objects)]
-  Commit --> History[(object_sighting: history)]
-  Objects --> UI[Memory page and Muse]
-```
+## Required live configuration
 
-## Required settings
+Use the existing backend keys and model IDs plus:
 
 ```dotenv
-VISION_PROVIDER=gemini
 MEMORY_PROVIDER=spacetimedb
-CAMERA_FRAME_SINK=spacetimedb
-SEED_SAMPLE_DATA=false
+VISION_PROVIDER=gemini
 VISION_ENRICHMENT=geometry
+CAMERA_FRAME_SINK=spacetimedb
 CAMERA_SPACETIMEDB_URL=https://maincloud.spacetimedb.com
-CAMERA_SPACETIMEDB_DATABASE=c2005dfa977b978871c77ab400a529efd494fce3e8d3d60c2aa786050f6ebd02
+CAMERA_SPACETIMEDB_DATABASE=YOUR_EXISTING_DATABASE_ID
+SEED_SAMPLE_DATA=false
 ```
 
-Keep the tested `GEMINI_VISION_API_KEY` / `GEMINI_MODEL` and Muse settings in the backend `.env`. The three new memory tables and commit reducer were published to this database with approval. Saved guests still use its existing `user` table through their separate adapter. The API no longer reads local sample objects when remote memory is selected.
+Copy an authorized `CAMERA_SPACETIMEDB_TOKEN` only when the deployed reducers require it. Saved user names have independent `SPACETIMEDB_*` settings; those settings alone do not enable image/object storage. Restart the API after changing configuration.
 
-The current prototype upload and commit reducers accept public access. An optional `CAMERA_SPACETIMEDB_TOKEN` remains backend-only. The app never acknowledges or deletes queue rows. Images that contribute to a completed capture are retained in `vision_capture`, so evidence does not disappear if another authorized consumer removes its queue source later.
+## Processing order
 
-## Upload contract
+1. The scan dialog captures a JPEG and sends room, request ID, scan ID and analysis interval to `/api/camera/frames` with the app bearer token.
+2. FastAPI validates/normalizes the image and computes quality diagnostics. The optional frame sink sends normalized bytes to `upload_binary_frame`.
+3. The remote memory adapter retrieves the exact persisted session/sequence frame, validates the bytes and passes it to the connected worker.
+4. The worker calls Gemini for visible objects and boxes. Geometry mode adds image-plane relations; optional models can add relative depth and embeddings.
+5. The backend validates the result and invokes `commit_vision_capture`. The database commits evidence, current objects and append-only sightings together.
+6. The frontend refreshes objects/activity every five seconds. A completed analysis currently closes the scan dialog. Remi's next question retrieves fresh records from the same memory store.
 
-`upload_binary_frame` receives the ordered [HTTP reducer arguments](https://spacetimedb.com/docs/http/database/):
+The camera-job callback runs inside the API process. It does not continuously watch every historical database row and is not an independent Gemini daemon. Upload acknowledgment, analysis completion and object-memory commit are separate states.
 
-```text
-[session, sequence, capturedUs, width, height, jpeg]
-```
+## Module tables
 
-`session` is a stable 32-character hexadecimal hash of the household and scan ID. `sequence` is one-based. `capturedUs` is the API receipt time in microseconds. The JPEG is resized to at most 1920 pixels on either side and compressed to at most 1 MiB before dimensions are measured. Its SATS JSON representation is a hexadecimal string; the table stores binary bytes. Integer arrays caused gateway failures for larger frames; see the [SpacetimeDB byte serializer](https://github.com/clockworklabs/SpacetimeDB/blob/master/crates/sats/src/ser/serde.rs).
+| Table                                 | Role                                                                  |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| `user`, `message`                     | Existing prototype names/chat tables, preserved by the camera module. |
+| `image_stream`, `image_stream_binary` | Image-delivery queues; binary is the integrated path.                 |
+| `vision_capture`                      | Retained capture evidence.                                            |
+| `object_memory`                       | Current object metadata and latest observation.                       |
+| `object_sighting`                     | Observation history.                                                  |
 
-The worker reads that exact session/sequence from the database and verifies dimensions and SHA-256 before Gemini sees it. It does not infer from an older diagnostic top-ranked photo or silently substitute a placeholder.
+Upload reducers validate frame content; acknowledgment reducers have their own permission checks. Public visibility is not a guarantee that every reducer accepts every caller. Read current source/deployed permissions before changing backend credentials. Do not delete or republish shared data to diagnose an upload problem.
 
-## What each status means
+## Diagnose by stage
 
-| Status                    | Meaning                                                               |
-| ------------------------- | --------------------------------------------------------------------- |
-| Latest view shared        | Image upload accepted; recognition may still be pending               |
-| Updating shared memory    | Selected frame is being analyzed/committed                            |
-| Updated N visible objects | Validated observations were committed to the configured memory store  |
-| No items clear enough     | Successful empty detection result; no invented objects                |
-| Analysis error            | Vision/readback/commit failed; no successful memory update is claimed |
+- Preview fails: check browser permission, HTTPS/localhost and camera availability.
+- `Invalid JPEG frame`: check normalization, reducer validation and the deployed frame contract. It is distinct from an authorization error.
+- Upload succeeds but no objects: verify `VISION_PROVIDER=gemini`, the vision key/model, database readback, worker status and commit permissions/schema.
+- Recognition succeeds but UI stays stale: verify `MEMORY_PROVIDER=spacetimedb`, the same database ID, selected room/search filters and the next refresh.
+- User creation fails: diagnose the independent saved-user adapter; an image-upload credential does not configure users.
 
-Select **Update shared memory** on Camera to invoke recognition. **Share camera view only** intentionally uploads without adding objects. The camera captures every 3–5 seconds, defaults to five, and skips busy upload ticks. The backend keeps one active inference and one newest pending frame per scan. The UI polls completion separately from upload and refreshes household memory every five seconds.
-
-## Verification and troubleshooting
-
-```bash
-.venv/bin/python scripts/check_pipeline.py
-```
-
-This read-only command identifies disabled vision, the wrong object-memory provider, missing tables and a missing commit reducer. It makes no model calls or database writes.
-
-If upload succeeds but no objects appear: check memory mode, `VISION_PROVIDER=gemini`, `MEMORY_PROVIDER=spacetimedb`, and the analysis status. Inspect `vision_capture` to distinguish a completed empty frame from an unprocessed queued image. New configuration needs an API restart and a fresh camera session. `VISION_PROVIDER=demo` never runs Gemini even when a key exists.
-
-“Invalid JPEG frame” is a reducer validation error. Restart the API with the current normalization/hex encoding fix, then stop/start Camera. A successful upload does not prove successful vision; look for the separate completed-memory status.
-
-## Remaining limits
-
-The worker is in-process, not a durable leased queue. Restarting the API loses pending jobs and does not backfill every historical frame. No automatic retries consume extra model calls after a failure. The next active camera frame can continue the workflow. The optional standalone SLAM/video prototypes are not the web app's worker.
-
-For local compatibility tests, `MEMORY_PROVIDER=sqlite` keeps the basic legacy detector and local evidence files. Samples are off by default; explicitly enable `SEED_SAMPLE_DATA=true` only for a separate test dataset. Old sample rows are hidden without deleting them when samples are off.
+Remote images and observations remain saved across API restarts. In-process pending work does not. Similar objects can remain ambiguous, and not seeing an object in a new frame does not prove it moved or disappeared. See [tests](TESTING.md) and [worker internals](../services/worker/README.md).

@@ -1,0 +1,159 @@
+.category-room-scene {
+  margin: 0;
+  color: #eef3e9;
+  min-width: 0;
+  background: radial-gradient(ellipse at 50% 45%, #40594e, #172820 85%);
+}
+.category-room-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 800 / 420;
+  overflow: hidden;
+}
+.category-room-stage > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.category-room-detail .category-room-stage {
+  min-height: 380px;
+}
+.category-room-scene figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  justify-content: space-between;
+  padding: 12px 20px;
+  font-size: 11px;
+  color: #c2d0c5;
+  background: #14251f80;
+}
+.category-room-scene figcaption > span:first-child {
+  font-weight: 600;
+}
+.room-object-pin {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  max-width: 35%;
+  text-align: left;
+  font-size: 12px;
+  padding: 7px 9px;
+  background: #162b23e8;
+  color: #e7eee5;
+  border: 1px solid #72957c;
+  border-radius: 9px;
+  box-shadow: 0 4px 16px #081d2040;
+}
+.room-object-pin > span:last-child {
+  min-width: 0;
+}
+.room-object-pin strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: inherit;
+}
+.room-object-pin small {
+  display: block;
+  color: #b2c7b8;
+  font-size: 10px;
+  line-height: 1.4;
+  margin-top: 3px;
+  overflow: hidden;
+  max-height: 2.8em;
+}
+.room-pin-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: var(--room-accent);
+  box-shadow: 0 0 0 3px #c7ed6822;
+}
+.room-object-pin.selected {
+  z-index: 2;
+  border-color: #d3ed9f;
+  box-shadow: 0 0 0 2px #c7ed6844;
+  background: #24412ff0;
+}
+button.room-object-pin:hover {
+  border-color: #e3f1c7;
+}
+.household-room-scenes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr));
+  gap: 16px;
+  padding: 18px;
+}
+.household-room-tile {
+  border: 1px solid #b4c9b433;
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 0;
+}
+.household-room-tile h3 {
+  margin: 0;
+  background: #1b3027;
+  font-size: 14px;
+}
+.household-room-tile h3 button {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  padding: 13px 16px;
+}
+.household-room-tile h3 span {
+  font-size: 11px;
+  color: #c7ed68;
+  font-weight: 400;
+}
+.household-room-tile .category-room-stage {
+  min-height: 220px;
+}
+.room-empty {
+  text-align: center;
+  padding: 50px 16px;
+  color: #c3d3c6;
+}
+.room-empty-overlay {
+  position: absolute;
+  bottom: 14px;
+  left: 16px;
+  right: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #d8e2d6;
+}
+@media (max-width: 768px) {
+  .category-room-detail .category-room-stage {
+    min-height: 260px;
+  }
+  .category-room-scene figcaption {
+    padding: 12px;
+    font-size: 10px;
+  }
+  .room-object-pin {
+    font-size: 10px;
+    padding: 5px 7px;
+  }
+  .room-object-pin small {
+    font-size: 9px;
+  }
+  .household-room-scenes {
+    padding: 12px;
+  }
+  .map-space-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .map-active-bar {
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+}

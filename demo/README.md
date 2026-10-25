@@ -1,18 +1,16 @@
-# Three-minute demo
+# Three-minute Remi demo
 
-Enable Gemini vision and Muse using the root README and [live scan guide](../docs/LIVE_SCAN.md). Run the API/frontend and use two browser sessions connected to the same API. Join by name as Alex and Pree; no password or email is needed. For a fresh rehearsal, choose a new `DATA_DIR` instead of deleting existing data.
+Configure the real Meta/Gemini providers and the team's current SpacetimeDB module using [setup](../docs/SETUP.md). Rehearse with two browsers connected to the same API and verify credits, permissions and recognition beforehand. Do not erase shared data for a rehearsal; use a separate reviewed test database when an empty memory is required.
 
-| Time      | Action                                                              | Point to explain                                                                                                                                        |
-| --------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0:00–0:20 | Show the household                                                  | “One person's camera scan helps everyone find shared objects, including someone who cannot inspect the room visually.”                                  |
-| 0:20–0:55 | Alex opens **Camera** and confirms scanning is on                   | Choose the room, 10 FPS upload target, and separate memory-analysis interval. Keep a distinctive object visible. Frames update memory automatically.    |
-| 0:55–1:25 | Pree searches from the second session                               | Show the saved image, box, room, source, and time. There is no contributor attribution.                                                                 |
-| 1:25–1:55 | Move the visible object to a different surface during the same scan | Wait for a processed frame and the second session's refresh. Association is provisional; similar objects need clarification.                            |
-| 1:55–2:25 | Pree asks Muse by voice where the object was last seen              | Hear the latest location and uncertainty; open the saved evidence. Source/time matter. Keep typing available.                                           |
-| 2:25–3:00 | Stop scanning and explain architecture/status                       | Camera → FastAPI → Gemini vision → shared observations → Muse read-only lookup. SQLite runs locally; object-memory SpacetimeDB integration is separate. |
+| Time      | Action                                                                   | Explain                                                                                                                           |
+| --------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 0:00–0:20 | Show Overview and Household members                                      | One room scan helps everyone find shared objects; names are simple prototype profiles.                                            |
+| 0:20–0:55 | Open New scan, choose a room and start recognition                       | One image immediately, then the default five-second cadence; upload, recognition and commit are separate stages.                  |
+| 0:55–1:20 | Wait for completion and show the remembered object in the second browser | The scan dialog closes after its update; the other browser refreshes shared data. Show source, time, photo and box.               |
+| 1:20–1:45 | Rescan the same object after moving it                                   | Show the latest saved location, acknowledging uncertain identity matching.                                                        |
+| 1:45–2:25 | Ask Remi with Hey/Hello/Hi Remi, then ask by typing                      | Meta-backed chat reads fresh stored evidence; voice supports people who cannot inspect the page visually.                         |
+| 2:25–3:00 | Show category-specific room scenes and explain the stack                 | Gemini recognizes images, SpacetimeDB shares memory and Meta powers the assistant. Scenes are illustrations, not calibrated maps. |
 
-Verify actual Meta/Gemini requests with your credentials before describing the integration as live. Without credentials, demonstrate labeled sample search and the honest disabled states. Keep a recording of the real working flow for network problems; no consumer Muse connector is required.
+Try an unknown object: the correct answer is no stored observation, not an invented location. Similar candidates should lead to clarification. Do not claim the app knows who placed items, continuously observes from a closed dialog/browser, measures walking directions or has private verified accounts.
 
-Try an unknown query such as “purple umbrella.” The correct result is no stored match, not an invented location. Test ambiguous candidates too. The original `desk.svg` illustration remains labeled sample evidence; its boxes are image regions, not physical navigation anchors.
-
-For Meta, emphasize the two-person benefit and accessible Muse interaction. Shared memory does not require knowing who placed an item. The rules and judges determine qualification; the theme is [Bringing People Closer Together with AI](https://cal-hacks-13-0.devpost.com/).
+For network trouble, use a recording of the real working flow and identify it as recorded. Labeled sample desk illustrations are optional local fixtures, not camera evidence. Hackathon track eligibility is determined by the event's current rules and judges; this demo does not guarantee qualification.

@@ -22,7 +22,9 @@ jobs:
           cache-dependency-path: services/api/requirements-dev.lock
       - run: make setup
       - run: npm run check
+      - run: .venv/bin/python scripts/check_docs.py
       - run: npm run test:module
       - run: make test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+      - run: .venv/bin/python deploy/azure/package.py --skip-build

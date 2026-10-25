@@ -1,26 +1,14 @@
-# iPhone → SpacetimeDB → MASt3R-SLAM
+# Camera helpers and standalone SLAM experiment
 
-Safari sends JPEGs over a same-origin WebSocket. The receiver scores each frame,
-calls `upload_binary_frame` over a persistent binary WebSocket, receives JPEG rows
-from a subscription to public `image_stream_binary`, verifies the bytes, and writes
-an ordered local spool. It then acknowledges (deletes) the database row over the
-same connection. Up to four frames can be in flight concurrently.
-`watch_slam.py` automatically starts MASt3R-SLAM on each new spool.
-This table is a delivery queue, not a permanent image archive. Local JPEGs remain
-in `.data/streams/<session>/`; remove finished sessions when no longer needed.
+The normal Remi app reuses `image_quality.py` and `spacetime_wire.py` through the installed API. Its camera is inside **New scan**, uses authenticated HTTP every 3/4/5 seconds and stops when that dialog closes. It does not need this directory's standalone server, tunnel or SLAM environment. See [live scanning](../docs/LIVE_SCAN.md).
 
-Target: `c2005dfa977b978871c77ab400a529efd494fce3e8d3d60c2aa786050f6ebd02`
-on `https://maincloud.spacetimedb.com`. The standalone `stream_module` preserves
-the target's existing `user` and `message` tables/reducers. The repository's
-separate household module is not deployed to this database.
+`stream_module/src/index.ts` is the active team database source. It preserves the public user/message tables, supports image delivery and validates the retained capture/object/sighting commit. Coordinate any publication with the database owner; connecting the website does not publish this module. See [the live contract](../docs/IMAGE_PIPELINE.md).
 
-## Integrated Commonplace app
+## Standalone experiment: separate from the app
 
-This prototype is now integrated into the main app's **Camera** menu (`http://localhost:5173/camera`) and **Scan room** dialog. The FastAPI backend imports this directory's original `TopFrameSelector`; the API wheel includes that reusable module. Front/back choice, JPEG compression, resolution, and top-three quality diagnostics are available in React.
+The instructions below document the original Windows/WSL WebSocket → SpacetimeDB → MASt3R-SLAM experiment. It assumes the referenced WSL environments, sibling MASt3R-SLAM source/model assets and tunnel binary already exist; a fresh Remi checkout does not install them. Its 1–30 FPS controls and spool/SLAM watcher are not the app's capture frequency or a measured room-map feature.
 
-From the repository root, update the existing API environment with `.venv/bin/python -m pip install -r services/api/requirements-dev.lock` and `.venv/bin/python -m pip install --no-deps -e services/api`, then run `make api` and `make web`. Choose **Camera preview only** to check capture/quality without Gemini, or **Update shared memory** with Gemini enabled to save observations for Muse. The main app uses authenticated HTTP and the requested 3–5 second cadence. It does not need this standalone server or its WebSocket sender. See [the integrated guide](../docs/LIVE_SCAN.md).
-
-The instructions below still run the original, independent WebSocket prototype with its 1–30 FPS controls. They do not connect to Commonplace memory or Muse.
+The receiver uploads binary JPEGs, reads subscribed frames back, verifies bytes and writes ordered local spools. Queued-row acknowledgment/deletion needs the matching owner identity. Public image visibility/upload permissions do not imply acknowledgment permission. Backend credentials remain in local ignored files/environment variables.
 
 ## Requirements
 

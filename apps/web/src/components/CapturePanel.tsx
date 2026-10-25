@@ -605,7 +605,7 @@ export default function CapturePanel({
         </section>
       )}
       <p className="fine-print">
-        Your view refreshes every {seconds} seconds. You can visit other screens in Commonplace
+        Your view refreshes every {seconds} seconds. You can visit other screens in Remi
         while the camera stays on. Switching away from this website or locking your phone pauses it.
       </p>
       <p className="fine-print">

@@ -1,5 +1,5 @@
-import { blockExternalFonts, expect, test } from './fixtures';
-import { joinAsGuest } from './guest-helpers';
+import { blockExternalFonts, expect, test } from './support/fixtures';
+import { joinAsGuest } from './support/guest-helpers';
 
 test('search, evidence, and a report shared between two browser sessions', async ({
   page,

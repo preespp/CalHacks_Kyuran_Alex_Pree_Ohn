@@ -1,0 +1,4 @@
+# Azure App Service / Oryx: install the tested Python 3.12 dependencies on Linux.
+-r services/api/requirements-dev.lock
+# Use a regular package, not an editable path into a temporary build directory.
+./services/api

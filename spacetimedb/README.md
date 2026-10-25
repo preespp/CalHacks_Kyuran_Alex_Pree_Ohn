@@ -1,39 +1,32 @@
-# Shared-memory module
+# SpacetimeDB modules in this repository
 
-This is a typechecked SpacetimeDB module. The optional **saved-user profile registry** is connected to FastAPI through HTTP; see [the user storage guide](../docs/USERS.md). Object/observation tables, vision workers, and live frontend subscriptions remain **not yet connected** to the runnable SQLite-backed app. Existing SQLite data is not imported automatically.
+The active Remi prototype uses **`camera_capture/stream_module/src/index.ts`**, not this folder's private-household module. Its public `user`, image-stream, `vision_capture`, `object_memory` and `object_sighting` contract is described in [the pipeline guide](../docs/IMAGE_PIPELINE.md).
 
-To add only public guest profiles to your teammate's existing module, use the [additive guest-table guide](guest-table/README.md). Do not publish this full module over their deployed source. The public addition is prepared locally and has not been published to their database.
+| Source                             | Purpose                                                                  | Active default?                           |
+| ---------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------- |
+| `../camera_capture/stream_module/` | Team public user/image/object-memory module                              | Yes, when remote providers are configured |
+| `src/index.ts`                     | Alternative private household, invitation, worker and scoped-view design | No                                        |
+| `users/`                           | Separate public `guest_profile` registry                                 | Optional alternative                      |
+| `guest-table/guestProfiles.ts`     | Additive guest-profile snippet for another reviewed module               | Optional alternative                      |
 
-The root `npm ci` installs the module's SDK dependency. Install the [SpacetimeDB CLI](https://spacetimedb.com/install) separately to publish it. Match the CLI/server release to the SDK version resolved in `package-lock.json`.
+The existing team `user` table works without adding a `guest_profile` table. App environment settings select the adapters; they do not migrate schemas or publish these modules automatically.
 
-From this directory, with a local server started in a separate terminal:
+## Develop and test
+
+From the repository root:
 
 ```bash
-spacetime start
+npm ci
+npm run typecheck
+npm run test:module
 ```
 
-Publish and generate bindings in another terminal from this directory:
+These local module tests check camera commit validation, guest additions, registry behavior and alternative permission boundaries. They do not connect to or reset a hosted database.
 
-```bash
-spacetime publish --server local commonplace-dev
-spacetime generate --lang typescript --out-dir ../apps/web/src/module_bindings
-```
+## Publishing boundaries
 
-These follow the CLI's module-directory workflow. Confirm `spacetime publish --help` and `spacetime generate --help` against the installed release if flags differ. No generated bindings are committed before a real module build succeeds. The current scaffold's verification uses SDK types and the official module test harness; it does not establish a successful CLI deployment.
+Publishing needs database-management access and the actual source currently deployed to the target. Never publish `src/` or `users/` over the team's camera database. Preserve existing schema/data and use additive migrations reviewed with the owner. Do not use a generated chat template as a way to retrieve or update deployed source.
 
-## Schema and operations
+Public read access, reducer write permissions and collaborator/publishing access are separate. The running backend uses URLs and matching runtime credentials, not a developer's CLI login. Normal Azure website updates do not republish SpacetimeDB.
 
-All tables are private: household, membership, invitation, worker, object, observation, and guest_profile. One identity belongs to one household in this initial schema.
-
-- `createGuestProfile` (HTTP name `create_guest_profile`): the demo-home owner creates selectable string-ID prototype profiles; private reads require the database owner token held by FastAPI. These guest profiles are distinct from native SpacetimeDB membership identities.
-- `createHousehold`: create a household and its owner membership.
-- `issueInvitation`: owner creates a single-use, 24-hour invitation. Generate at least 32 random characters client-side; do not use a predictable phrase.
-- `joinHousehold`: consume the invitation and join as a member.
-- `grantWorker` / `revokeWorker`: owner controls a separate backend identity's ability to submit visual observations.
-- `recordVisualObservation`: granted worker records image evidence with a validated normalized box and no contributor identity. The legacy optional actor column remains unset; publishing this schema change requires coordination with the database teammate.
-- `reportLocation`: legacy member location-report reducer; writes no visual evidence or contributor. The app now uses camera scanning for updates.
-- `my_membership`, `household_objects`, `household_observations`: identity-filtered subscribable views.
-
-To integrate, generate bindings, connect the browser with a stable authenticated identity, create/join the household through reducers, and subscribe to these views. Then replace the local API storage implementation and authorize the worker identity. Never expose the worker's credentials to the browser or make the source tables public as a shortcut.
-
-Run `npm run test:module` from the root for invitation, worker permission, and cross-household isolation checks. The SDK harness runs without a live SpacetimeDB server.
+The private module implements households, membership/invitations, worker grants, private objects/observations, legacy reports and scoped views. Its identity-scoped subscriptions are an alternative design, not the current frontend's five-second HTTP polling.

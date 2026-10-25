@@ -6,6 +6,7 @@ export async function installVoiceMocks(page: Page) {
       text: string;
       voice?: SpeechSynthesisVoice | null;
       rate?: number;
+      volume?: number;
       lang?: string;
       onstart?: (() => void) | null;
       onend?: (() => void) | null;
@@ -17,7 +18,13 @@ export async function installVoiceMocks(page: Page) {
       streams: 0,
       recordings: 0,
       spoken: [] as string[],
-      speechRequests: [] as { text: string; voiceURI: string; rate: number; lang: string }[],
+      speechRequests: [] as {
+        text: string;
+        voiceURI: string;
+        rate: number;
+        volume: number;
+        lang: string;
+      }[],
       availableVoices: [
         { voiceURI: 'test-alex', name: 'Alex', lang: 'en-US', default: true, localService: true },
         { voiceURI: 'test-sam', name: 'Sam', lang: 'en-GB', default: false, localService: true },
@@ -166,6 +173,7 @@ export async function installVoiceMocks(page: Page) {
             text: utterance.text,
             voiceURI: utterance.voice?.voiceURI || '',
             rate: utterance.rate ?? 1,
+            volume: utterance.volume ?? 1,
             lang: utterance.lang || '',
           });
           state.utterance = utterance;
@@ -186,7 +194,7 @@ export interface VoiceTestState {
   streams: number;
   recordings: number;
   spoken: string[];
-  speechRequests: { text: string; voiceURI: string; rate: number; lang: string }[];
+  speechRequests: { text: string; voiceURI: string; rate: number; volume: number; lang: string }[];
   availableVoices: SpeechSynthesisVoice[];
   setVoices: (voices: SpeechSynthesisVoice[]) => void;
   denied: boolean;

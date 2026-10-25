@@ -84,7 +84,7 @@ export function useWakePhrase(onWake: (command: string) => void, paused: boolean
         const result = event.results[index];
         if (!result.isFinal) continue;
         const text = result[0].transcript;
-        const match = /^\s*hello\b[,.!?:;\s-]*/i.exec(text);
+        const match = /^\s*(?:hey|hello|hi)\s+rem[iy]\b[,.!?:;\s-]*/i.exec(text);
         if (!match) continue;
         halt();
         setListening(false);
@@ -96,8 +96,8 @@ export function useWakePhrase(onWake: (command: string) => void, paused: boolean
       if (event.error === 'no-speech') return; // Normal end handles a bounded restart.
       fail(
         event.error === 'not-allowed' || event.error === 'service-not-allowed'
-          ? 'Voice permission was denied. Allow voice access in your browser, or use Talk to Muse or typing.'
-          : 'Hands-free listening is unavailable right now. Try turning it on again, or use Talk to Muse.',
+          ? 'Voice permission was denied. Allow voice access in your browser, or use Talk to Remi or typing.'
+          : 'Hands-free listening is unavailable right now. Try Allow microphone again, or use Talk to Remi.',
       );
     };
     recognition.onend = () => {
@@ -106,7 +106,7 @@ export function useWakePhrase(onWake: (command: string) => void, paused: boolean
       setListening(false);
       rapidEnds.current = Date.now() - started < 1000 ? rapidEnds.current + 1 : 0;
       if (rapidEnds.current >= 3) {
-        fail('Hands-free listening keeps stopping in this browser. Use Talk to Muse or typing.');
+        fail('Hands-free listening keeps stopping in this browser. Use Talk to Remi or typing.');
       } else if (active.current && !pausedRef.current && !document.hidden) {
         timer.current = setTimeout(launch, 500);
       }
@@ -114,7 +114,7 @@ export function useWakePhrase(onWake: (command: string) => void, paused: boolean
     try {
       recognition.start();
     } catch {
-      fail('Could not start hands-free listening. Use Talk to Muse or typing.');
+      fail('Could not start hands-free listening. Use Talk to Remi or typing.');
     }
   }
 

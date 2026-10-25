@@ -4,9 +4,9 @@ import { api } from '../api';
 import type { ChatMessage, ChatResponse, Health, MemoryObject } from '../types';
 import { useSpeechOutput, useVoiceInput } from '../voice';
 import { useWakePhrase } from '../wake';
-import { mediaDefault, saveMediaPreference } from '../mediaPreferences';
+import { createPortal } from 'react-dom';
 
-export const WAKE_GREETING = 'Hi I am Muse how can I help you today with household stuff';
+export const WAKE_GREETING = 'Hi, I’m Remi. How can I help you find things around your home today?';
 
 type Turn = ChatMessage & { evidence?: ChatResponse };
 
@@ -16,14 +16,19 @@ export default function AssistantPanel({
   onSelect,
   compact = false,
   onOpen,
+  settingsHost,
+  prompt,
+  onAnswer,
 }: {
   token: string;
   health: Pick<Health, 'assistant_provider'> | null;
   onSelect?: (item: MemoryObject) => void;
   compact?: boolean;
   onOpen?: () => void;
+  settingsHost?: HTMLElement | null;
+  prompt?: { id: number; text: string } | null;
+  onAnswer?: (answer: string) => void;
 }) {
-  const autoAttempted = useRef(false);
   const [messages, setMessages] = useState<Turn[]>([]);
   const [question, setQuestion] = useState('');
   const [pending, setPending] = useState('');
@@ -31,7 +36,8 @@ export default function AssistantPanel({
   const controller = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement | null>(null);
   const enabled = health?.assistant_provider === 'muse' || health?.assistant_provider === 'gemini';
-  const name = health?.assistant_provider === 'gemini' ? 'Gemini' : 'Muse';
+  const name = 'Remi';
+  const isMuse = health?.assistant_provider === 'muse';
   const [readAloud, setReadAloud] = useState(false);
   const [conversation, setConversation] = useState(false);
   const [acknowledging, setAcknowledging] = useState(false);
@@ -53,7 +59,7 @@ export default function AssistantPanel({
       void activateWake(command);
     },
     !enabled ||
-      name !== 'Muse' ||
+      !isMuse ||
       conversation ||
       acknowledging ||
       voice.state !== 'idle' ||
@@ -64,7 +70,7 @@ export default function AssistantPanel({
   wakeEnabled.current = wake.enabled;
 
   function stopConversation() {
-    wake.disable();
+    // End this conversation and return to wake standby. Hiding the page stops recognition.
     conversationRef.current = false;
     generation.current += 1;
     setConversation(false);
@@ -103,7 +109,7 @@ export default function AssistantPanel({
       stopConversation();
       return;
     }
-    // An inline command ("Hello, where are my keys?") is already transcribed
+    // An inline command ("Hello Remi, where are my keys?") is already transcribed
     // by the browser. Otherwise, record the question using Meta ASR after the cue.
     if (command) void sendRef.current(command, true);
     else void voice.start({ automatic: true });
@@ -170,37 +176,34 @@ export default function AssistantPanel({
 
   const enableWakeRef = useRef(wake.enable);
   enableWakeRef.current = wake.enable;
+  const wakeErrorRef = useRef(wake.error);
+  wakeErrorRef.current = wake.error;
   useEffect(() => {
-    if (
-      !enabled ||
-      name !== 'Muse' ||
-      !wake.supported ||
-      !voice.supported ||
-      !speech.supported ||
-      autoAttempted.current
-    )
-      return;
-    const timer = setTimeout(() => {
-      autoAttempted.current = true;
-      if (mediaDefault('voice')) {
+    if (!enabled || !isMuse || !wake.supported || !voice.supported || !speech.supported) return;
+    const begin = () => {
+      if (!document.hidden) {
         setReadAloud(true);
         enableWakeRef.current();
       }
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [enabled, name, wake.supported, voice.supported, speech.supported]);
-
-  function toggleVoice() {
-    if (wake.enabled || conversation) {
-      saveMediaPreference('voice', false);
-      stopConversation();
-    } else {
-      saveMediaPreference('voice', true);
-      setReadAloud(true);
-      wake.enable();
-      void speech.speak('I’m listening. Say Hello when you need me.');
-    }
-  }
+    };
+    const timer = setTimeout(begin, 0);
+    const visible = () => {
+      if (!document.hidden) begin();
+    };
+    // Some browsers require a user gesture for the initial microphone request.
+    const gesture = () => {
+      if (!wakeEnabled.current && !wakeErrorRef.current) begin();
+    };
+    document.addEventListener('visibilitychange', visible);
+    window.addEventListener('pointerdown', gesture);
+    window.addEventListener('keydown', gesture);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', visible);
+      window.removeEventListener('pointerdown', gesture);
+      window.removeEventListener('keydown', gesture);
+    };
+  }, [enabled, isMuse, wake.supported, voice.supported, speech.supported]);
 
   async function send(text = question, voiceTurn = false) {
     const message = text.trim();
@@ -232,6 +235,7 @@ export default function AssistantPanel({
       ]);
       setQuestion('');
       setPending('');
+      onAnswer?.(result.answer);
       if (controller.current === request) controller.current = null;
       if (readAloud || voiceTurn) {
         const outcome = await speech.speak(result.answer);
@@ -257,6 +261,107 @@ export default function AssistantPanel({
     }
   }
   sendRef.current = send;
+  const handledPrompt = useRef<number | null>(null);
+  useEffect(() => {
+    if (!prompt || !enabled || handledPrompt.current === prompt.id || controller.current) return;
+    handledPrompt.current = prompt.id;
+    setQuestion(prompt.text);
+    void sendRef.current(prompt.text);
+  }, [prompt, enabled, pending]);
+
+  const voiceSettings = (
+    <>
+      <p className="fine-print" role="status">
+        {!enabled
+          ? 'Remi will be ready when the assistant connects.'
+          : !wake.supported
+            ? 'Use typing or Talk to Remi in chat. Hands-free listening isn’t available in this browser.'
+            : wake.listening
+              ? 'Listening for “Hey Remi”, “Hello Remi”, or “Hi Remi”.'
+              : conversation
+                ? 'Remi is helping you. Listening resumes after the reply.'
+                : wake.error
+                  ? 'Microphone needs attention. Open chat to allow access and try again.'
+                  : 'Keep Remi open to talk hands-free.'}
+      </p>
+      <details className="voice-settings">
+        <summary>Remi voice settings</summary>
+        <div className="voice-settings-fields">
+          <label className="field-label" htmlFor="assistant-voice">
+            Speaking voice
+            <select
+              id="assistant-voice"
+              value={speech.voiceURI}
+              disabled={!speech.supported || speech.speaking || conversation}
+              onChange={(event) => speech.setVoice(event.target.value)}
+              aria-describedby="assistant-voice-help"
+            >
+              <option value="">Device default</option>
+              {speech.voiceURI && !speech.voices.some((v) => v.voiceURI === speech.voiceURI) && (
+                <option value={speech.voiceURI}>
+                  Saved voice unavailable — using device default
+                </option>
+              )}
+              {speech.voices.map((voice) => (
+                <option key={voice.voiceURI} value={voice.voiceURI}>
+                  {voice.name} ({voice.lang})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-label" htmlFor="assistant-speaking-speed">
+            Speaking speed · {speech.rate.toFixed(1)}×
+            <input
+              id="assistant-speaking-speed"
+              type="range"
+              min="0.5"
+              max="1.5"
+              step="0.1"
+              value={speech.rate}
+              aria-valuetext={`${speech.rate.toFixed(1)} times normal speed`}
+              disabled={!speech.supported || speech.speaking || conversation}
+              onChange={(event) => speech.setRate(Number(event.target.value))}
+            />
+          </label>
+          <label className="field-label" htmlFor="assistant-volume">
+            Reply volume · {Math.round(speech.volume * 100)}%
+            <input
+              id="assistant-volume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={speech.volume}
+              aria-valuetext={`${Math.round(speech.volume * 100)} percent`}
+              disabled={!speech.supported}
+              onChange={(event) => speech.setVolume(Number(event.target.value))}
+            />
+          </label>
+          <button
+            className="secondary-button"
+            disabled={
+              !speech.supported ||
+              speech.speaking ||
+              conversation ||
+              !!pending ||
+              voice.state !== 'idle'
+            }
+            onClick={() => {
+              void speech.speak('Hello, I’m Remi. I can help you find things around your home.');
+            }}
+          >
+            <Volume2 size={17} /> Preview voice
+          </button>
+        </div>
+        <p id="assistant-voice-help" className="fine-print">
+          Choose a voice, then preview it. Your voice, speed and volume are saved on this device for
+          greetings and replies. Available voices depend on your browser and device.
+          {!speech.supported &&
+            ' Spoken replies are unavailable in this browser; typing still works.'}
+        </p>
+      </details>
+    </>
+  );
 
   return (
     <section
@@ -265,19 +370,9 @@ export default function AssistantPanel({
     >
       <div className="voice-power">
         <span>
-          <Mic size={17} /> Muse voice {wake.enabled || conversation ? 'on' : 'off'}
-          {acknowledging ? ` · ${WAKE_GREETING}` : wake.listening ? ' · Say Hello' : ''}
+          <Mic size={17} /> Remi voice {wake.enabled || conversation ? 'on' : 'off'}
+          {acknowledging ? ` · ${WAKE_GREETING}` : wake.listening ? ' · Say Hey Remi' : ''}
         </span>
-        <button
-          className="secondary-button"
-          aria-pressed={wake.enabled || conversation}
-          disabled={
-            !enabled || name !== 'Muse' || !wake.supported || !voice.supported || !speech.supported
-          }
-          onClick={toggleVoice}
-        >
-          {wake.enabled || conversation ? 'Turn off Muse voice' : 'Turn on Muse voice'}
-        </button>
         {compact && onOpen && (
           <button className="secondary-button" onClick={onOpen}>
             Open chat
@@ -314,7 +409,7 @@ export default function AssistantPanel({
           </strong>
           <p>
             {health
-              ? 'You can still search for saved items and view their last-seen photos in Our memory.'
+              ? 'You can still search for saved items and view their last-seen photos in My objects.'
               : 'Your saved household memory will remain available.'}
           </p>
         </div>
@@ -457,19 +552,19 @@ export default function AssistantPanel({
           <strong>
             {conversation
               ? speech.speaking
-                ? 'Muse is speaking'
+                ? 'Remi is speaking'
                 : pending
-                  ? 'Muse is thinking'
+                  ? 'Remi is thinking'
                   : voice.state === 'transcribing'
                     ? 'Understanding you'
                     : voice.state === 'requesting'
                       ? 'Opening microphone'
                       : 'Listening…'
-              : 'Talk to Muse'}
+              : 'Talk to Remi'}
           </strong>
           <p>
             {conversation
-              ? 'Pause after speaking. Muse will answer and listen again.'
+              ? 'Pause after speaking. Remi will answer and listen again.'
               : 'Tap once, speak naturally, and pause to send. Typing stays available.'}
           </p>
           {conversation && voice.state === 'recording' && (
@@ -496,58 +591,38 @@ export default function AssistantPanel({
               voice.state !== 'idle' ||
               !voice.supported ||
               !speech.supported ||
-              name !== 'Muse'
+              !isMuse
             }
           >
             <Mic size={17} />
-            Talk to Muse
+            Talk to Remi
           </button>
         )}
       </div>
       <div className="wake-controls">
-        <button
-          className="secondary-button"
-          aria-pressed={wake.enabled}
-          aria-describedby="wake-explanation"
-          disabled={
-            !wake.enabled &&
-            (!enabled ||
-              name !== 'Muse' ||
-              !wake.supported ||
-              !voice.supported ||
-              !speech.supported ||
-              conversation ||
-              !!pending ||
-              voice.state !== 'idle' ||
-              speech.speaking)
-          }
-          onClick={() => {
-            if (wake.enabled) {
-              saveMediaPreference('voice', false);
-              stopConversation();
-            } else {
-              saveMediaPreference('voice', true);
-              setReadAloud(true);
-              wake.enable();
-              void speech.speak('I’m listening. Say Hello when you need me.');
-            }
-          }}
-        >
-          <Mic size={17} />
-          {wake.enabled ? 'Disable Hello' : 'Enable Hello'}
-        </button>
-        <p id="wake-explanation" className="fine-print">
-          {wake.supported
-            ? 'Say “Hello”, wait for Muse’s greeting, then ask your question. Keep Commonplace open while you talk.'
-            : 'Hello is unavailable in this browser. Use Talk to Muse, dictation, or typing.'}
-        </p>
         <p className="fine-print" role="status" aria-live="polite">
-          {wake.enabled
-            ? wake.listening
-              ? 'Ready when you are. Say “Hello” to begin.'
-              : 'Muse will listen for “Hello” again after your conversation.'
-            : 'Hands-free listening is off. You can still type or tap Talk to Muse.'}
+          {!enabled
+            ? 'Voice will be ready when the assistant connects.'
+            : !wake.supported
+              ? 'Hands-free listening is unavailable here. Use Talk to Remi or type your question.'
+              : wake.listening
+                ? 'Ready when you are. Say “Hey Remi”, “Hello Remi”, or “Hi Remi”.'
+                : conversation
+                  ? 'Remi is helping you. Listening resumes after the reply.'
+                  : 'Keep this website visible to talk to Remi.'}
         </p>
+        {isMuse && wake.supported && !wake.enabled && !conversation && (
+          <button
+            className="secondary-button"
+            onClick={() => {
+              voice.clearError();
+              speech.clearError();
+              wake.enable();
+            }}
+          >
+            Allow microphone
+          </button>
+        )}
       </div>
       <div className="voice-controls">
         {!conversation && voice.state === 'recording' ? (
@@ -564,7 +639,7 @@ export default function AssistantPanel({
           <button
             className="secondary-button"
             disabled={
-              !enabled || !!pending || voice.state !== 'idle' || !voice.supported || name !== 'Muse'
+              !enabled || !!pending || voice.state !== 'idle' || !voice.supported || !isMuse
             }
             onClick={() => {
               speech.stop();
@@ -614,68 +689,7 @@ export default function AssistantPanel({
           </button>
         )}
       </div>
-      <details className="voice-settings">
-        <summary>Voice settings</summary>
-        <div className="voice-settings-fields">
-          <label className="field-label" htmlFor="assistant-voice">
-            Speaking voice
-            <select
-              id="assistant-voice"
-              value={speech.voiceURI}
-              disabled={!speech.supported || speech.speaking || conversation}
-              onChange={(event) => speech.setVoice(event.target.value)}
-              aria-describedby="assistant-voice-help"
-            >
-              <option value="">Device default</option>
-              {speech.voiceURI && !speech.voices.some((v) => v.voiceURI === speech.voiceURI) && (
-                <option value={speech.voiceURI}>
-                  Saved voice unavailable — using device default
-                </option>
-              )}
-              {speech.voices.map((voice) => (
-                <option key={voice.voiceURI} value={voice.voiceURI}>
-                  {voice.name} ({voice.lang})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field-label" htmlFor="assistant-speaking-speed">
-            Speaking speed · {speech.rate.toFixed(1)}×
-            <input
-              id="assistant-speaking-speed"
-              type="range"
-              min="0.5"
-              max="1.5"
-              step="0.1"
-              value={speech.rate}
-              aria-valuetext={`${speech.rate.toFixed(1)} times normal speed`}
-              disabled={!speech.supported || speech.speaking || conversation}
-              onChange={(event) => speech.setRate(Number(event.target.value))}
-            />
-          </label>
-          <button
-            className="secondary-button"
-            disabled={
-              !speech.supported ||
-              speech.speaking ||
-              conversation ||
-              !!pending ||
-              voice.state !== 'idle'
-            }
-            onClick={() => {
-              void speech.speak('Hello, I’m Muse. I can help you find things around your home.');
-            }}
-          >
-            <Volume2 size={17} /> Preview voice
-          </button>
-        </div>
-        <p id="assistant-voice-help" className="fine-print">
-          Choose a voice, then preview it. Your choice and speed are saved on this device for
-          greetings and replies. Available voices depend on your browser and device.
-          {!speech.supported &&
-            ' Spoken replies are unavailable in this browser; typing still works.'}
-        </p>
-      </details>
+      {settingsHost ? createPortal(voiceSettings, settingsHost) : voiceSettings}
       {!conversation && voice.state !== 'idle' && (
         <p className="fine-print" role="status">
           {voice.state === 'recording'
@@ -690,7 +704,7 @@ export default function AssistantPanel({
           {speech.speaking
             ? 'Speaking. The microphone is off until the reply finishes.'
             : pending
-              ? 'Thinking. The microphone is off while Muse replies.'
+              ? 'Thinking. The microphone is off while Remi replies.'
               : voice.state === 'transcribing'
                 ? 'Understanding your question…'
                 : 'Listening for your question. Stop the session to type instead.'}
@@ -716,7 +730,8 @@ export default function AssistantPanel({
         <p>
           {`Your questions and matching item details are shared with ${name} to help answer you.`}{' '}
           Recorded questions are sent to Meta to turn speech into text. Your browser may use an
-          online speech service to listen for “Hello”. Replies play through your device’s voice.
+          online speech service to listen for “Hey Remi”, “Hello Remi”, or “Hi Remi”. Replies play
+          through your device’s voice.
         </p>
       </details>
     </section>

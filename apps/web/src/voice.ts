@@ -267,18 +267,22 @@ export function useVoiceInput(
 
 export type SpeechOutcome = 'ended' | 'blocked' | 'canceled';
 const SPEECH_PREFERENCES_KEY = 'commonplace.speech-output';
-type SpeechPreferences = { voiceURI: string; rate: number };
+type SpeechPreferences = { voiceURI: string; rate: number; volume: number };
 
 function loadSpeechPreferences(): SpeechPreferences {
   try {
     const saved = JSON.parse(localStorage.getItem(SPEECH_PREFERENCES_KEY) || '{}');
     return {
       voiceURI: typeof saved?.voiceURI === 'string' ? saved.voiceURI : '',
+      volume:
+        typeof saved?.volume === 'number' && saved.volume >= 0 && saved.volume <= 1
+          ? saved.volume
+          : 1,
       rate:
         typeof saved?.rate === 'number' && saved.rate >= 0.5 && saved.rate <= 1.5 ? saved.rate : 1,
     };
   } catch {
-    return { voiceURI: '', rate: 1 };
+    return { voiceURI: '', rate: 1, volume: 1 };
   }
 }
 
@@ -337,6 +341,7 @@ export function useSpeechOutput() {
         message.lang = selectedVoice.lang;
       }
       message.rate = preferences.rate;
+      message.volume = preferences.volume;
       const task = {
         message,
         resolve,
@@ -375,6 +380,10 @@ export function useSpeechOutput() {
     voices,
     voiceURI: preferences.voiceURI,
     rate: preferences.rate,
+    volume: preferences.volume,
+    setVolume: (volume: number) => {
+      if (Number.isFinite(volume)) updatePreferences({ volume: Math.min(1, Math.max(0, volume)) });
+    },
     setVoice: (voiceURI: string) => updatePreferences({ voiceURI }),
     setRate: (rate: number) => {
       if (Number.isFinite(rate)) updatePreferences({ rate: Math.min(1.5, Math.max(0.5, rate)) });

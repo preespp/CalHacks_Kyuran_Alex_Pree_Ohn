@@ -17,14 +17,17 @@ import {
   Scan,
   Search,
   Sparkles,
-  User,
   X,
 } from 'lucide-react';
 import { api, timeAgo } from './api';
 import CapturePanel from './components/CapturePanel';
 import EvidenceImage from './components/EvidenceImage';
+import RoomScene, { roomEmoji } from './components/RoomScene';
+import GuestEntry from './components/GuestEntry';
+import RemiAssistant from './components/RemiAssistant';
+import { useCurrentDate } from './useCurrentDate';
 import { RotatingText } from './components/reactbits';
-import type { Health, MemoryObject, Observation, Profile, Session } from './types';
+import type { Health, MemoryObject, Observation, Session } from './types';
 
 function loadSession(): Session | null {
   try {
@@ -68,18 +71,6 @@ function getMatchBadge(label: string): { text: string; color: 'lime' | 'blue' | 
   return { text: `${pct}% match`, color };
 }
 
-// Deterministic coordinates for markers inside the embedded 3D map
-function getMarkerPosition(index: number) {
-  const defaultPositions = [
-    { top: '34%', left: '26%' },
-    { top: '28%', left: '68%' },
-    { top: '42%', left: '48%' },
-    { top: '24%', left: '38%' },
-    { top: '48%', left: '76%' },
-  ];
-  return defaultPositions[index % defaultPositions.length];
-}
-
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession);
   const [health, setHealth] = useState<Health | null>(null);
@@ -89,6 +80,10 @@ export default function App() {
   const [roomFilter, setRoomFilter] = useState('All rooms');
   const [selectedObject, setSelectedObject] = useState<MemoryObject | null>(null);
   const [page, setPage] = useState<'overview' | 'objects' | 'activity' | 'detail'>('overview');
+  const currentDate = useCurrentDate();
+  const [assistantOpen, setAssistantOpen] = useState(() => new URLSearchParams(window.location.search).get('view') === 'assistant');
+  const [assistantPrompt, setAssistantPrompt] = useState<{ id: number; text: string } | null>(null);
+  const [voiceSettingsHost, setVoiceSettingsHost] = useState<HTMLDivElement | null>(null);
   const [toast, setToast] = useState('');
 
   // Location update state for detail page
@@ -115,9 +110,9 @@ export default function App() {
   const [infoModal, setInfoModal] = useState(false);
   const [profileModal, setProfileModal] = useState(false);
 
-  // Conversational Ask Muse state
-  const [museInput, setMuseInput] = useState('');
-  const [museAnswer, setMuseAnswer] = useState(
+  // Conversational Ask Remi state
+  const [remiInput, setRemiInput] = useState('');
+  const [remiAnswer, setRemiAnswer] = useState(
     'I can help you remember where anything is. Try asking about your keys, camera, or adapter.',
   );
 
@@ -270,28 +265,12 @@ export default function App() {
     }
   }, [spaceItems, activeMapObjectId]);
 
-  // Ask Muse Handler
-  function handleAskMuse(question: string) {
-    const prompt = question.trim().toLowerCase();
-    if (!prompt) return;
-
-    const words = prompt.split(/\s+/).filter((w) => w.length > 2);
-    const found = items.find((item) => {
-      const text = `${item.label} ${item.latest?.room} ${item.latest?.location} ${item.appearance}`.toLowerCase();
-      return words.some((w) => text.includes(w));
-    });
-
-    if (found) {
-      const depth = getDepth(found.label);
-      setMuseAnswer(
-        `I found your ${found.label.toLowerCase()}. It was last observed in the ${found.latest.room.toLowerCase()}, ${found.latest.location.toLowerCase()}, approximately ${depth} from the camera viewpoint.`,
-      );
-    } else {
-      setMuseAnswer(
-        `I scanned your recent household memories, but didn't locate an exact match. Could it be in the living room or entryway? You can also run a New Scan to update memory.`,
-      );
-    }
-    setMuseInput('');
+  // The card and hands-free voice share the real assistant and its conversation.
+  function handleAskRemi(question: string) {
+    if (!question.trim()) return;
+    setAssistantOpen(true);
+    setAssistantPrompt(previous => ({ id: (previous?.id ?? 0) + 1, text: question.trim() }));
+    setRemiInput('');
   }
 
   function handleOpenScanModal() {
@@ -353,45 +332,24 @@ export default function App() {
     }
   }
 
-  // Profile switch handler
-  async function handleSwitchProfile(profile: Profile) {
-    const profileName = { alex: 'Alex', pree: 'Pree', kyuran: 'Kyuran' }[profile];
-    try {
-      const val = await api<Session>('/api/guest/session', undefined, {
-        method: 'POST',
-        body: JSON.stringify({ name: profileName }),
-      });
-      sessionStorage.setItem('commonplace-guest-session', JSON.stringify(val));
-      sessionStorage.setItem('commonplace-session', JSON.stringify(val));
-      setSession(val);
-      setProfileModal(false);
-      setRevision((r) => r + 1);
-      setToast(`Switched household member to ${val.member.name}`);
-    } catch {
-      try {
-        const val = await api<Session>('/api/demo/session', undefined, {
-          method: 'POST',
-          body: JSON.stringify({ profile }),
-        });
-        sessionStorage.setItem('commonplace-session', JSON.stringify(val));
-        sessionStorage.setItem('commonplace-guest-session', JSON.stringify(val));
-        setSession(val);
-        setProfileModal(false);
-        setRevision((r) => r + 1);
-        setToast(`Switched household member to ${val.member.name}`);
-      } catch (err) {
-        console.error('Profile switch error:', err);
-      }
-    }
+  // Add a saved household name or switch to an existing one.
+  async function handleSwitchProfile(body: { name: string } | { user_id: string }) {
+    const val = await api<Session>('/api/guest/session', session?.token, {
+      method: 'POST', body: JSON.stringify(body),
+    });
+    sessionStorage.setItem('commonplace-guest-session', JSON.stringify(val));
+    sessionStorage.setItem('commonplace-session', JSON.stringify(val));
+    setSession(val);
+    setProfileModal(false);
+    setAssistantPrompt(null);
+    setRemiAnswer('Ask me where something was last seen in your household.');
+    setRevision(r => r + 1);
+    setToast(`Now using ${val.member.name}’s household profile`);
   }
 
-  const currentDate = new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  }).format(new Date());
-
-  const latestScanRoom = items[0]?.latest?.room || 'Living room';
+  const latestRoomObservation = useMemo(() => [...items].sort((a, b) => b.latest.observed_at.localeCompare(a.latest.observed_at))[0], [items]);
+  const latestScanRoom = latestRoomObservation?.latest.room ?? 'Your household';
+  const latestRoomItems = items.filter(item => item.latest.room === latestScanRoom);
   const activeTargetItem = items.find((it) => it.id === activeMapObjectId);
 
   return (
@@ -402,7 +360,7 @@ export default function App() {
           <span className="brand-mark">
             <Sparkles size={17} strokeWidth={2.2} />
           </span>
-          <span>Muse</span>
+          <span>Remi</span>
         </div>
 
         <nav className="nav-list" aria-label="Main navigation">
@@ -449,9 +407,11 @@ export default function App() {
             <Info size={18} />
             <span>How it works</span>
           </button>
+          <button className="nav-item" type="button" onClick={() => setProfileModal(true)}><Boxes size={18} /><span>Household members</span></button>
         </nav>
 
         <div className="sidebar-bottom">
+          <div className="remi-controls sidebar-voice" ref={setVoiceSettingsHost} aria-label="Remi voice controls" />
           <div className="storage">
             <div className="storage-row">
               <span>Memory space</span>
@@ -463,7 +423,9 @@ export default function App() {
             <p>{items.length} objects remembered</p>
           </div>
 
-          <div
+          <button
+            type="button"
+            aria-label="Switch household member"
             className="profile"
             onClick={() => setProfileModal(true)}
             title="Click to switch profile"
@@ -477,7 +439,7 @@ export default function App() {
               <span>Household member · Switch</span>
             </div>
             <MoreHorizontal size={18} />
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -549,13 +511,6 @@ export default function App() {
                 <span className="remembered-status">
                   <i></i> Remembered
                 </span>
-                <button
-                  type="button"
-                  className="detail-more"
-                  aria-label="More options"
-                >
-                  <MoreHorizontal size={18} />
-                </button>
               </div>
             </header>
 
@@ -581,66 +536,27 @@ export default function App() {
               <div className="detail-room-copy">
                 <p className="eyebrow light">SPATIAL MEMORY</p>
                 <h2>{selectedObject.latest.location}</h2>
-                <span>Muse located this object using your latest room scan.</span>
+                <span>Your saved location is shown above. The room illustration below is a visual guide to the category.</span>
               </div>
 
-              <div className="room-scene detail-room-scene">
-                <div className="depth-grid"></div>
-                <div className="object-marker detail-marker">
-                  <span className="marker-dot"></span>
-                  <div>
-                    <b>{selectedObject.label}</b>
-                    <small>{getDepth(selectedObject.label)} away</small>
-                  </div>
-                </div>
-                <div className="sofa">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-                <svg
-                  className="plant-vine"
-                  viewBox="0 0 32 140"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M16 4C7 24 7 44 16 64C25 84 25 104 16 124C12 131 14 136 16 138"
-                    stroke="#5d8270"
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="console-table">
-                  <i></i>
-                </div>
-                <div className="depth-label">
-                  DEPTH MAP · {selectedObject.latest.room.toUpperCase()}
-                </div>
-              </div>
+              <RoomScene room={selectedObject.latest.room} objects={[selectedObject]} selectedObjectId={selectedObject.id} variant="detail" />
 
               <div className="detail-scene-foot">
                 <span>
                   <MapPin size={16} /> {selectedObject.latest.room}
                 </span>
-                <span>
-                  Measured depth <strong>{getDepth(selectedObject.label)}</strong>
-                </span>
-                <span>
-                  Confidence <strong>98%</strong>
-                </span>
+                <span>Last updated {timeAgo(selectedObject.latest.observed_at)}</span>
               </div>
             </section>
 
-            {/* Bottom 2-Column Section: Evidence Card + Muse Explains & Metadata */}
+            {/* Bottom 2-Column Section: Evidence Card + Remi Explains & Metadata */}
             <section className="detail-content">
-              {/* Left Column: LAST-SEEN EVIDENCE / What Muse saw */}
+              {/* Left Column: LAST-SEEN EVIDENCE / What Remi saw */}
               <article className="evidence-card">
                 <div className="detail-section-title">
                   <div>
                     <p className="eyebrow">LAST-SEEN EVIDENCE</p>
-                    <h2>What Muse saw</h2>
+                    <h2>What Remi saw</h2>
                   </div>
                   <span>{timeAgo(selectedObject.latest.observed_at)}</span>
                 </div>
@@ -692,7 +608,7 @@ export default function App() {
                 </div>
               </article>
 
-              {/* Right Column: Muse Explains + Object Metadata */}
+              {/* Right Column: Remi Explains + Object Metadata */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 {/* Card 1: MUSE EXPLAINS / Where to look */}
                 <div className="muse-explains">
@@ -717,10 +633,10 @@ export default function App() {
                     type="button"
                     onClick={() => {
                       setPage('overview');
-                      handleAskMuse(`Where is my ${selectedObject.label}?`);
+                      handleAskRemi(`Where is my ${selectedObject.label}?`);
                     }}
                   >
-                    <span>Ask Muse a follow-up</span>
+                    <span>Ask Remi a follow-up</span>
                     <ArrowRight size={14} />
                   </button>
                 </div>
@@ -957,17 +873,7 @@ export default function App() {
                   onClick={() => setActiveSpace(roomName)}
                 >
                   <span>
-                    {roomName.toLowerCase().includes('kitchen')
-                      ? '🍳'
-                      : roomName.toLowerCase().includes('bath')
-                        ? '🛁'
-                        : roomName.toLowerCase().includes('bed')
-                          ? '🛏️'
-                          : roomName.toLowerCase().includes('entry')
-                            ? '🚪'
-                            : roomName.toLowerCase().includes('office')
-                              ? '💼'
-                              : '🛋️'}{' '}
+                    {roomEmoji(roomName)}{' '}
                     {roomName}
                   </span>
                   <span className="pill-count">{roomItems.length}</span>
@@ -981,56 +887,20 @@ export default function App() {
                 <h2>
                   <Compass size={20} />
                   <span>
-                    {activeSpace === 'All' ? 'Whole Household 3D Map' : `${activeSpace} 3D Mapped Space`}
+                    {activeSpace === 'All' ? 'Household rooms' : `${activeSpace} room view`}
                   </span>
                 </h2>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span className="map-tag">Interactive 3D Space</span>
+                  <span className="map-tag">Illustrated 3D view</span>
                   <span style={{ fontSize: 11, color: '#aab8b0' }}>
-                    Click an object below to locate in 3D
+                    Choose an item to highlight its saved room
                   </span>
                 </div>
               </div>
 
               {/* 3D Scene Viewport with interactive markers */}
-              <div className="interactive-3d-scene">
-                <div className="depth-grid"></div>
-                <div className="sofa">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-                <div className="plant">⌇</div>
-                <div className="console-table"></div>
-
-                {/* Render pins for objects in this space */}
-                {spaceItems.map((item, idx) => {
-                  const pos = getMarkerPosition(idx);
-                  const isSelected = item.id === activeMapObjectId;
-                  return (
-                    <div
-                      key={item.id}
-                      className={`object-marker ${isSelected ? 'active-marker' : ''}`}
-                      style={{ top: pos.top, left: pos.left, zIndex: isSelected ? 10 : 3 }}
-                      onClick={() => setActiveMapObjectId(item.id)}
-                    >
-                      {/* Beacon ripple ring when highlighted */}
-                      {isSelected && <span className="marker-beacon"></span>}
-                      <span className="marker-dot"></span>
-                      <div>
-                        <b>{item.label}</b>
-                        <small>
-                          {getDepth(item.label)} away · {item.latest?.location || 'Desk'}
-                        </small>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                <div className="depth-label">
-                  DEPTH MAP · {spaceItems.length} OBJECTS ANCHORED IN 3D
-                </div>
-              </div>
+              <RoomScene room={activeSpace === 'All' ? 'All spaces' : activeSpace} objects={spaceItems}
+                selectedObjectId={activeMapObjectId} onSelect={item => setActiveMapObjectId(item.id)} onRoomSelect={setActiveSpace} />
 
               {/* Banner showing the currently marked target */}
               {activeTargetItem && (
@@ -1057,11 +927,11 @@ export default function App() {
                         fontSize: 10,
                       }}
                     >
-                      3D MARKER ACTIVE
+                      ITEM SELECTED
                     </span>
                     <span>
                       Locating: <strong>{activeTargetItem.label}</strong> in{' '}
-                      <strong>{activeTargetItem.latest?.room}</strong> ({activeTargetItem.latest?.location}) · Depth {getDepth(activeTargetItem.label)}
+                      <strong>{activeTargetItem.latest?.room}</strong> ({activeTargetItem.latest?.location})
                     </span>
                   </div>
                   <button
@@ -1079,7 +949,7 @@ export default function App() {
                       setPage('detail');
                     }}
                   >
-                    Inspect Description & Depth <ChevronRight size={14} />
+                    View saved details <ChevronRight size={14} />
                   </button>
                 </div>
               )}
@@ -1123,7 +993,7 @@ export default function App() {
                     <div className="object-info">
                       {isSelected && (
                         <span className="active-indicator-tag">
-                          <Check size={12} strokeWidth={3} /> Marked on 3D Map
+                          <Check size={12} strokeWidth={3} /> Selected in room view
                         </span>
                       )}
 
@@ -1325,47 +1195,17 @@ export default function App() {
                     <h2>{latestScanRoom}</h2>
                   </div>
                   <span className="live-dot">
-                    <i></i> Scanned 12 min ago
+                    <i></i> {latestRoomObservation ? `Updated ${timeAgo(latestRoomObservation.latest.observed_at)}` : 'Ready for your first scan'}
                   </span>
                 </div>
 
-                <div className="room-scene">
-                  <div className="depth-grid"></div>
-                  <div className="sofa">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
-                  <div className="plant">⌇</div>
-                  <div className="console-table"></div>
-
-                  {/* Dynamic Markers */}
-                  {items.slice(0, 2).map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className={`object-marker ${idx === 0 ? 'key-marker' : 'camera-marker'}`}
-                      onClick={() => {
-                        setSelectedObject(item);
-                        setPage('detail');
-                      }}
-                    >
-                      <span className="marker-dot"></span>
-                      <div>
-                        <b>{item.label}</b>
-                        <small>{getDepth(item.label)} away</small>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="depth-label">
-                    DEPTH MAP · {items.length ? `${items.length} OBJECTS` : '32 OBJECTS'}
-                  </div>
-                </div>
+                <RoomScene room={latestScanRoom} objects={latestRoomItems} variant="overview"
+                  onSelect={item => { setSelectedObject(item); setPage('detail'); }} />
 
                 <div className="scene-foot">
                   <span>
                     <Boxes size={16} />
-                    {items.length || 32} objects recognized
+                    {latestRoomItems.length} objects in this room
                   </span>
                   <button
                     type="button"
@@ -1378,7 +1218,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Ask Muse Card */}
+              {/* Ask Remi Card */}
               <aside className="muse-card">
                 <div className="muse-title">
                   <span className="muse-orb">
@@ -1386,28 +1226,28 @@ export default function App() {
                   </span>
                   <div>
                     <p className="eyebrow">YOUR MEMORY COMPANION</p>
-                    <h2>Ask Muse</h2>
+                    <h2><button type="button" aria-label="Open Remi chat" onClick={() => setAssistantOpen(true)}>Ask Remi</button></h2>
                   </div>
                 </div>
 
-                <div className="chat-bubble">{museAnswer}</div>
+                <div className="chat-bubble">{remiAnswer}</div>
 
                 <div className="suggestions">
                   <button
                     type="button"
-                    onClick={() => handleAskMuse('Where are my house keys?')}
+                    onClick={() => handleAskRemi('Where are my house keys?')}
                   >
                     Where are my house keys?
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleAskMuse('What did I leave in the studio?')}
+                    onClick={() => handleAskRemi('What did I leave in the studio?')}
                   >
                     What did I leave in the studio?
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleAskMuse('Where is the blue water bottle?')}
+                    onClick={() => handleAskRemi('Where is the blue water bottle?')}
                   >
                     Where is the blue water bottle?
                   </button>
@@ -1417,14 +1257,14 @@ export default function App() {
                   className="ask-form"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    handleAskMuse(museInput);
+                    handleAskRemi(remiInput);
                   }}
                 >
                   <input
                     placeholder="Ask about anything..."
-                    aria-label="Ask Muse"
-                    value={museInput}
-                    onChange={(e) => setMuseInput(e.target.value)}
+                    aria-label="Ask Remi"
+                    value={remiInput}
+                    onChange={(e) => setRemiInput(e.target.value)}
                   />
                   <button type="submit" className="send" aria-label="Send query">
                     <ArrowRight size={16} />
@@ -1432,7 +1272,7 @@ export default function App() {
                 </form>
 
                 <p className="private-note">
-                  Private to you · Muse learns only from your scans also can do mistakes.
+                  Shared with your household · Answers use saved sightings and may be out of date.
                 </p>
               </aside>
             </section>
@@ -1520,7 +1360,7 @@ export default function App() {
                 <Sparkles size={16} strokeWidth={2.2} />
               </span>
               <div>
-                <strong>Muse</strong>
+                <strong>Remi</strong>
                 <span>by Team Memory Makers</span>
               </div>
             </div>
@@ -1528,27 +1368,16 @@ export default function App() {
           </div>
 
           <div className="partner-band">
-            <p className="eyebrow">SUPPORTED BY & POWERED WITH</p>
-            <div className="partner-logos" aria-label="Sponsors and technology partners">
-              <span className="factory-mark">
-                <i>F</i> FACTORY
-              </span>
-              <span className="mercor-mark">
-                <i>M</i> MERCOR
-              </span>
-              <span className="hugging-mark">
-                <i>HF</i> Hugging Face
-              </span>
-              <span className="fireworks-mark">
-                <i>AI</i> Fireworks AI
-              </span>
-              <span className="anthropic-mark">ANTHROPIC</span>
-              <span className="coinbase-mark">coinbase</span>
+            <p className="eyebrow">BUILT WITH</p>
+            <div className="partner-logos" aria-label="Technology used in Remi">
+              <span>Meta Muse</span>
+              <span>Google Gemini</span>
+              <span>SpacetimeDB</span>
             </div>
           </div>
 
           <div className="footer-bottom">
-            <span>© 2025 Team Memory Makers. Built with care for CalHacks 13.0.</span>
+            <span>© 2026 Team Memory Makers. Built with care for CalHacks 13.0.</span>
             <nav aria-label="Footer navigation">
               <button type="button" onClick={() => setInfoModal(true)}>
                 Privacy
@@ -1597,6 +1426,7 @@ export default function App() {
                   <button
                     type="button"
                     className="close-button"
+                    aria-label="Close dialog"
                     onClick={() => setScanModal(false)}
                   >
                     <X size={18} />
@@ -1674,6 +1504,7 @@ export default function App() {
                   <button
                     type="button"
                     className="close-button"
+                    aria-label="Close dialog"
                     onClick={() => setScanModal(false)}
                   >
                     <X size={18} />
@@ -1753,11 +1584,12 @@ export default function App() {
             <div className="modal-head">
               <div>
                 <p className="eyebrow">ARCHITECTURE</p>
-                <h2>How Muse Works</h2>
+                <h2>How Remi Works</h2>
               </div>
               <button
                 type="button"
                 className="close-button"
+                    aria-label="Close dialog"
                 onClick={() => setInfoModal(false)}
               >
                 <X size={18} />
@@ -1776,7 +1608,7 @@ export default function App() {
               </p>
               <p>
                 <strong>3. Privacy-First Household Memory:</strong> Your visual memory is
-                processed locally or encrypted in your household vault, allowing you to ask Muse
+                processed locally or encrypted in your household vault, allowing you to ask Remi
                 where you left everyday items.
               </p>
             </div>
@@ -1805,44 +1637,27 @@ export default function App() {
               <button
                 type="button"
                 className="close-button"
+                    aria-label="Close dialog"
                 onClick={() => setProfileModal(false)}
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
-              {(['alex', 'pree', 'kyuran'] as Profile[]).map((prof) => (
-                <button
-                  key={prof}
-                  type="button"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: 12,
-                    background: session?.member?.id === prof ? '#e4e9d9' : '#fff',
-                    border: '1px solid #ddd',
-                    borderRadius: 10,
-                    fontWeight: 600,
-                  }}
-                  onClick={() => handleSwitchProfile(prof)}
-                >
-                  <User size={18} />
-                  <span style={{ textTransform: 'capitalize' }}>
-                    {prof === 'alex' ? 'Alex Morgan' : prof === 'pree' ? 'Pree' : 'Kyuran'}
-                  </span>
-                  {session?.member?.id === prof && (
-                    <span style={{ marginLeft: 'auto', fontSize: 12, color: '#32443d' }}>
-                      Active
-                    </span>
-                  )}
-                </button>
-              ))}
+            <div className="remi-controls household-members">
+              <GuestEntry onJoin={name => handleSwitchProfile({ name })}
+                onSelect={user_id => handleSwitchProfile({ user_id })}
+                currentUserId={session?.member.id} switching={!!session}
+                submitLabel="Add household member" />
             </div>
           </div>
         </div>
       )}
+
+      {session && <RemiAssistant key={session.token} token={session.token} health={health}
+        open={assistantOpen} onClose={() => setAssistantOpen(false)} settingsHost={voiceSettingsHost}
+        prompt={assistantPrompt} onAnswer={setRemiAnswer}
+        onSelect={item => { setAssistantOpen(false); setSelectedObject(item); setPage('detail'); }} />}
 
       {/* Photo Lightbox Modal */}
       {photoViewer && selectedObject && (

@@ -1,12 +1,12 @@
-import { expect, test } from './fixtures';
-import { installVoiceMocks } from './voice-mocks';
-import { chatReply, openAssistant } from './assistant-helpers';
+import { expect, test } from './support/fixtures';
+import { installVoiceMocks } from './support/voice-mocks';
+import { chatReply, openAssistant } from './support/assistant-helpers';
 
 test.beforeEach(async ({ page }) => {
   await installVoiceMocks(page);
 });
 
-test('pause sends automatically, replies aloud, and listens for a fresh follow-up', async ({
+test('manual voice sends on a pause and a second voice question keeps context', async ({
   page,
 }) => {
   await page.clock.install();
@@ -20,10 +20,10 @@ test('pause sends automatically, replies aloud, and listens for a fresh follow-u
   });
   await page.route('**/api/chat', (route) => {
     messages.push(route.request().postDataJSON());
-    return route.fulfill({ json: chatReply(`Muse reply ${messages.length}.`) });
+    return route.fulfill({ json: chatReply(`Remi reply ${messages.length}.`) });
   });
   await openAssistant(page);
-  await page.getByRole('button', { name: 'Talk to Muse', exact: true }).click();
+  await page.getByRole('button', { name: 'Talk to Remi', exact: true }).click();
   await expect(page.getByRole('meter', { name: 'Microphone level' })).toBeVisible();
   await page.evaluate(() => {
     window.__voiceTest.amplitude = 0.08;
@@ -34,15 +34,16 @@ test('pause sends automatically, replies aloud, and listens for a fresh follow-u
     window.__voiceTest.amplitude = 0;
   });
   await page.clock.runFor(1450);
-  await expect(page.getByRole('log')).toContainText('Muse reply 1.');
+  await expect(page.getByRole('log')).toContainText('Remi reply 1.');
   expect(messages[0]).toEqual({ message: 'Tell me a joke.', history: [] });
-  expect(await page.evaluate(() => window.__voiceTest.spoken)).toEqual(['Muse reply 1.']);
+  expect(await page.evaluate(() => window.__voiceTest.spoken)).toEqual(['Remi reply 1.']);
   expect(await page.evaluate(() => window.__voiceTest.streams)).toBe(1);
   expect(await page.evaluate(() => window.__voiceTest.stopped)).toBe(1);
   // Even after a long reply, the microphone must not record the speaker output.
   await page.clock.runFor(1800);
   expect(await page.evaluate(() => window.__voiceTest.streams)).toBe(1);
   await page.evaluate(() => window.__voiceTest.finishSpeech());
+  await page.getByRole('button', { name: 'Talk to Remi', exact: true }).click();
   await page.clock.runFor(350);
   await expect.poll(() => page.evaluate(() => window.__voiceTest.streams)).toBe(2);
   await expect(page.getByRole('meter')).toBeVisible();
@@ -54,7 +55,7 @@ test('pause sends automatically, replies aloud, and listens for a fresh follow-u
     window.__voiceTest.amplitude = 0;
   });
   await page.clock.runFor(1450);
-  await expect(page.getByRole('log')).toContainText('Muse reply 2.');
+  await expect(page.getByRole('log')).toContainText('Remi reply 2.');
   expect(messages[1].message).toBe('Tell me another one.');
   expect(messages[1].history).toHaveLength(2);
   expect(transcriptions).toBe(2);
@@ -63,7 +64,7 @@ test('pause sends automatically, replies aloud, and listens for a fresh follow-u
   await page.clock.runFor(500);
   expect(await page.evaluate(() => window.__voiceTest.streams)).toBe(2);
   await expect(page.getByRole('textbox', { name: 'Ask about a shared object' })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Talk to Muse', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Talk to Remi', exact: true })).toBeEnabled();
 });
 
 test('silence ends the session without sending audio or using the model', async ({ page }) => {
@@ -74,7 +75,7 @@ test('silence ends the session without sending audio or using the model', async 
     return route.fulfill({ json: { text: 'should not happen' } });
   });
   await openAssistant(page);
-  await page.getByRole('button', { name: 'Talk to Muse', exact: true }).click();
+  await page.getByRole('button', { name: 'Talk to Remi', exact: true }).click();
   await expect(page.getByRole('meter')).toBeVisible();
   await page.clock.runFor(8200);
   await expect(page.getByRole('alert')).toContainText('No speech detected');
@@ -90,21 +91,21 @@ test('blocked spoken playback pauses the loop and leaves the reply readable', as
     route.fulfill({ json: { text: 'Hello' } }),
   );
   await page.route('**/api/chat', (route) =>
-    route.fulfill({ json: chatReply('Hello from Muse.') }),
+    route.fulfill({ json: chatReply('Hello from Remi.') }),
   );
   await openAssistant(page);
   await page.evaluate(() => {
     window.__voiceTest.amplitude = 0.08;
     window.__voiceTest.blocked = true;
   });
-  await page.getByRole('button', { name: 'Talk to Muse', exact: true }).click();
+  await page.getByRole('button', { name: 'Talk to Remi', exact: true }).click();
   await expect(page.getByRole('meter')).toBeVisible();
   await page.clock.runFor(400);
   await page.evaluate(() => {
     window.__voiceTest.amplitude = 0;
   });
   await page.clock.runFor(1450);
-  await expect(page.getByRole('log')).toContainText('Hello from Muse.');
+  await expect(page.getByRole('log')).toContainText('Hello from Remi.');
   await expect(page.getByRole('alert')).toContainText('playback was blocked');
   await expect(page.getByRole('button', { name: 'Stop voice session' })).not.toBeVisible();
   await page.clock.runFor(500);
@@ -134,7 +135,7 @@ test('stopping during transcription prevents late automatic chat submission', as
   await page.evaluate(() => {
     window.__voiceTest.amplitude = 0.08;
   });
-  await page.getByRole('button', { name: 'Talk to Muse', exact: true }).click();
+  await page.getByRole('button', { name: 'Talk to Remi', exact: true }).click();
   await expect(page.getByRole('meter')).toBeVisible();
   await page.clock.runFor(400);
   await page.evaluate(() => {
@@ -157,7 +158,7 @@ test('hiding the page ends listening without uploading the unfinished turn', asy
     return route.fulfill({ json: { text: 'Unexpected' } });
   });
   await openAssistant(page);
-  await page.getByRole('button', { name: 'Talk to Muse', exact: true }).click();
+  await page.getByRole('button', { name: 'Talk to Remi', exact: true }).click();
   await expect(page.getByRole('meter')).toBeVisible();
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });

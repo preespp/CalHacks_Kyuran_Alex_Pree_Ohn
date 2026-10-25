@@ -1,43 +1,16 @@
-# Commonplace
+# Remi
 
-A shared visual memory for the “where did we put that?” moments.
+Remi is a shared household memory for finding everyday objects. Scan a room, keep the last-seen image and location, then search or ask Remi by typing or voice. Household members share the same object memory; the app does not identify who placed an item.
 
-A live room scan updates object locations automatically. Everyone in the household can search the same last-seen image, bounding box, room, location description, and time. Memory does not record who placed an item.
+The interface is named **Remi**. **Meta Muse** powers chat and transcription, **Gemini** analyzes selected images, and **SpacetimeDB** stores live users, images, objects and observation history. Python package names, npm workspace names and environment variables retain their existing `commonplace`/`muse` identifiers.
 
-**This repository is a runnable local hackathon starter.** It includes a React app, a FastAPI backend, Onyu’s connected Gemini vision pipeline, shared SpacetimeDB object memory and evidence, a Meta Muse text/voice assistant, and SQLite app sessions. A local SQLite memory mode remains available for development. Muse Spark via Meta Model API is the user-facing assistant; Gemini remains responsible for computer vision. No consumer Muse connector is needed. Live account and device verification remain setup steps.
+## Start from a fresh clone
 
-## What works now
-
-| Capability                                                                     | Status                                                           |
-| ------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| Search objects, filter rooms, inspect a saved scene and bounding box           | Working locally                                                  |
-| Shared last-seen locations and observation history                             | Working locally; no contributor attribution                      |
-| Join with any display name, switch guests, leave the session                   | Working; no email, password, or account subscription             |
-| Persist object memory and app sessions                                         | SpacetimeDB live memory; SQLite session hashes in DATA_DIR       |
-| Update a second browser session                                                | Five-second polling of the same API                              |
-| Persistent camera capturing every 3–5 seconds                                  | Camera preview works without Gemini; memory analysis uses Gemini |
-| Camera preview, front/back selection, JPEG quality, top-three frame ranking    | Working without Gemini; authenticated backend checks             |
-| Analyze a real image with Gemini                                               | Implemented; requires your API key and model access              |
-| Store real photographs on the host disk                                        | Working; keep DATA_DIR outside release folders and back it up    |
-| In-app Muse assistant with fresh household memory and clickable evidence       | Implemented; requires Meta API key and model access              |
-| Microphone input, browser spoken replies, typed chat                           | Implemented; verify microphone/audio on your device              |
-| Read-only household search for optional external integrations                  | Existing HTTP endpoint retained                                  |
-| Shared SpacetimeDB objects, image evidence and observation history             | Connected to the team camera module and Muse                     |
-| Production sign-in, background workers, reliable object reidentification, SLAM | Next milestones                                                  |
-
-Samples are off by default. Empty households show no fabricated objects. Existing sample records are hidden without deletion; isolated fixtures can explicitly enable SEED_SAMPLE_DATA=true. A person's location report does not turn an older photograph into evidence of the new location.
-
-## Quick start
-
-Use **Node.js 24 LTS**, **Python 3.12**, npm, and Git. No cloud accounts or Docker are required to open the empty local app and test camera preview. On this Mac, Python 3.12 is available at `/opt/homebrew/bin/python3.12`; the shell's default `python3` points to an older Anaconda installation.
-
-From the repository root:
+Install **Git**, **Node.js 24** (see `.nvmrc`), and **Python 3.12**. Docker and cloud accounts are not required for the local preview.
 
 ```bash
-# If nvm is installed:
-nvm install
-nvm use
-
+git clone https://github.com/preespp/CalHacks_Kyuran_Alex_Pree.git
+cd CalHacks_Kyuran_Alex_Pree
 npm ci
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r services/api/requirements-dev.lock
@@ -45,198 +18,85 @@ python3.12 -m venv .venv
 cp .env.example .env
 ```
 
-Start the API in terminal 1:
+Copy `.env.example` only on the first setup; preserve your `.env` when updating. If you use nvm, run `nvm install` and `nvm use` before `npm ci`. The commands above use a macOS/Linux shell; see [setup](docs/SETUP.md) for Windows/WSL and prerequisites.
+
+Start two terminals in the repository root:
 
 ```bash
+# Terminal 1
 make api
 ```
 
-Start the frontend in terminal 2:
-
 ```bash
+# Terminal 2
 make web
 ```
 
-Open **http://localhost:5173**, enter your name, and select **Continue as guest**. No password, email, paid user subscription, or external identity provider is needed. Guests share one prototype household. Interactive API documentation is at **http://127.0.0.1:8000/docs**.
+Open **http://localhost:5173**. The current prototype automatically opens a Pree guest profile when no browser session exists. Use **Household members**, directly below **How it works**, to add a name or select a saved profile. These are name-only display profiles, not verified accounts.
 
-`make setup` is an alternative to the dependency-install steps above. It uses `python3.12` by default; override it with `make setup PYTHON=/path/to/python3.12` when necessary. No example objects are seeded by default. Follow [the live workflow guide](docs/LIVE_WORKFLOW.md) to enable the connected cloud pipeline.
+The default configuration shows an empty household with camera preview available and AI disabled. Choose **New scan**, select a room, then **Continue with …** to open capture controls. Samples are off by default. For an explicitly labeled local sample, set `SEED_SAMPLE_DATA=true` and restart the API.
 
-### Camera feature merged from Fieldframe
+## Enable the live application
 
-The **Camera** menu opens **http://localhost:5173/camera**. It shares the same camera component as **Scan room**. Select **Camera preview only** to test video, front/back selection, JPEG compression, backend sharpness/brightness, and the three best frame candidates without Gemini. Select **Update shared memory** with Gemini enabled to save locations automatically. Camera captures once on start, then every 5 seconds by default (selectable 3, 4, or 5 seconds), with one upload in flight. The backend waits at least the selected interval after each Gemini result before analyzing the latest frame. Camera and Muse remain mounted across household screens. Both attempt to start by default, subject to browser permissions and stored on/off choices. See [persistent assistance](docs/ASSISTANCE_SESSION.md).
+Follow [provider and database setup](docs/SETUP.md#enable-the-live-workflow). Keep credentials in the root `.env` locally and Azure application settings when hosted. Never put provider keys in `VITE_*` variables.
 
-The [connected image workflow](docs/IMAGE_PIPELINE.md) saves frames to the team database, reads them back into Onyu’s process_capture pipeline, then atomically writes current objects, history and retained photo evidence. MEMORY_PROVIDER=spacetimedb makes both the memory page and Muse read those shared records. The tables have been published to the current team database with approval; see [activation and tests](docs/LIVE_WORKFLOW.md).
+| Part                               | Required configuration                                                                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Remi chat and speech transcription | `ASSISTANT_PROVIDER=muse`, `MODEL_API_KEY`, `META_MODEL`, `META_VOICE_MODEL`                                                   |
+| Computer vision                    | `VISION_PROVIDER=gemini`, `GEMINI_VISION_API_KEY`, `GEMINI_MODEL`                                                              |
+| Live images and object memory      | `MEMORY_PROVIDER=spacetimedb`, `CAMERA_FRAME_SINK=spacetimedb`, matching `CAMERA_SPACETIMEDB_URL` and database ID              |
+| Shared saved names                 | `GUEST_PROFILE_STORE=spacetimedb`, `SPACETIMEDB_PROFILE_TABLE=user`, public access, matching `SPACETIMEDB_URL` and database ID |
 
-After pulling this merge, keep your existing `.env` and update the backend dependencies:
+The shared database must already expose the camera/memory module in `camera_capture/stream_module`. Connecting the app does not create missing tables. Coordinate schema changes with the database owner; ordinary website deployment does not publish or reset the database. See [image pipeline](docs/IMAGE_PIPELINE.md) and [configuration](docs/CONFIGURATION.md).
 
-```bash
-.venv/bin/python -m pip install -r services/api/requirements-dev.lock
-.venv/bin/python -m pip install --no-deps -e services/api
-```
+## Current interface and behavior
 
-Then restart `make api` and `make web`. No separate camera server or WebSocket proxy is required. The original `camera_capture/` standalone prototype remains available; the main API reuses its OpenCV `TopFrameSelector`. See [camera setup and limits](docs/LIVE_SCAN.md).
+- **Overview**: search, latest-room illustration, remembered objects and the main **Ask Remi** card. Click its heading to expand the conversation.
+- **My objects**: category illustrations for eight room types, custom-room fallback, object selection and saved evidence. The scenes and pin placement are illustrations, not reconstructed floor plans or navigation coordinates.
+- **Activity**: saved observation timeline.
+- **Household members**: add a name or switch to a saved user. Duplicate names can have different IDs.
+- **New scan**: a scrollable room/camera dialog. Captures immediately, then every **5 seconds** by default, with **3/4/5-second** choices and one upload at a time. The current UI closes the dialog after a completed memory update; closing it unmounts/stops the camera. There is no separate Camera menu or continuous camera across app screens.
+- **Voice**: “Hey Remi”, “Hello Remi” or “Hi Remi” activates the persistent assistant. Wait for the greeting, ask and pause. Voice, volume and speed settings are above sidebar memory storage. Typing remains available; wake listening has no on/off switch. The page must remain visible and device permissions still apply.
 
-### Try the shared-memory demo
+The UI date updates at local midnight. Remi answers from fresh saved records; old chat turns remain snapshots. Object association is conservative and can produce separate candidates when appearance changes. Objects not seen again are not automatically proven absent. Some older object-card depth/match badges remain generated presentation values; they are not calibrated measurements. See [architecture and limits](docs/ARCHITECTURE.md).
 
-1. Enable Gemini vision using the settings below and restart `make api`.
-2. Join as **Pree**, open **Scan room**, select **Update shared memory**, stop if necessary, choose the room and memory-analysis interval, then restart, then press **Start scanning** and grant camera permission.
-3. Keep a distinctive object visible. Each processed frame saves its image, box, location, and timestamp automatically. No manual object entry is needed.
-4. Open another browser session and join as **Alex**, then search for that object or ask Muse. Both users see the same household memory, with no contributor name.
-5. While keeping the object visible in the same scan, move it to another surface and wait for a processed frame. The second session polls every five seconds; a new Muse question reads fresh evidence.
-6. Stop scanning before leaving. Switching household screens keeps it running; hiding the website or leaving stops it; an already-uploaded frame may finish on the backend.
-
-Without Gemini credentials, use **Camera preview only**; shared-memory scanning is disabled and no placeholder objects are added. Automatic association is provisional: a unique, unchanged label and appearance can reuse an ID across adjacent frames in the same scan/room. Ambiguous objects or changed descriptions create separate candidates. See [live camera scanning and limits](docs/LIVE_SCAN.md).
-
-See [the three-minute demo script](demo/README.md).
-
-## Repository layout
-
-```text
-apps/web/                         React + TypeScript + Vite frontend
-  src/components/                 Camera, evidence image, accessible dialog
-services/api/
-  commonplace_api/main.py        HTTP endpoints and session authorization
-  commonplace_api/store.py       SQLite reference implementation
-  commonplace_api/vision.py      Gemini adapter and image normalization
-  commonplace_api/muse.py        Muse shared-memory tool loop
-  commonplace_api/voice.py       Muse Voice Transcribe and audio validation
-  commonplace_api/storage.py     Persistent host image storage
-  commonplace_api/frame_sink.py  Upload and exact-byte database readback
-  commonplace_api/object_memory.py Shared object/history/image storage and worker orchestration
-  tests/                          API, permissions, evidence, provider tests
-camera_capture/                  Original camera prototype and shared OpenCV quality selector
-services/worker/                  Connected Onyu pipeline; optional depth and embeddings
-spacetimedb/
-  src/index.ts                    Private tables, reducers, scoped views
-  tests/                          Module permission tests
-contracts/                        API and coordinate conventions
-demo/                             Original sample illustration and pitch script
-docs/                             Setup and architecture decisions
-tests/browser/                    Two-session and mobile browser checks
-```
-
-The frontend uses plain CSS to keep this first scaffold easy to edit; Tailwind is not required. No image-generation service or stock-photo license is needed for the original sample illustration.
-
-## Enable Gemini
-
-Create a project and API key in [Google AI Studio](https://aistudio.google.com/). In the root `.env`, change:
-
-```dotenv
-VISION_PROVIDER=gemini
-GEMINI_VISION_API_KEY=your-vision-teammates-private-api-key
-GEMINI_MODEL=your-accessible-image-capable-model-id
-```
-
-Restart the API. Use a model available to your account that supports image input and structured JSON output. The placeholder above must be replaced with an actual model ID; there is no hardcoded model-version assumption.
-
-The capture endpoint normalizes EXIF orientation, removes metadata, resizes the image, requests structured observations, converts Gemini's `[ymin, xmin, ymax, xmax]` values on a 0–1000 scale to normalized `[xmin, ymin, xmax, ymax]`, and validates every box. Invalid responses fail without adding objects.
-
-Camera ingestion returns quality/status immediately and feeds an in-process backend worker. It keeps one active inference and one latest pending frame per scan, with a bounded provider timeout. The legacy `/api/captures` endpoint remains synchronous. A durable distributed queue is still a later step. For the asynchronous design, see [the worker contract](services/worker/README.md).
-
-## Use Ask Muse
-
-The household **Ask Muse** screen is the only assistant UI. Configure the repository-root `.env`:
-
-```dotenv
-ASSISTANT_PROVIDER=muse
-MODEL_API_KEY=your-private-meta-api-key
-META_MODEL=muse-spark-1.3
-META_VOICE_MODEL=muse-voice-transcribe-1.0
-```
-
-Choose model IDs enabled for your Meta project. Keep keys on the backend, never in `VITE_*` settings or frontend source.
-
-Run `make api` and `make web` in separate terminals. Open **http://localhost:5173/**, enter a guest name, and choose **Ask Muse**. The API initializes its local SQLite store automatically; a separate hosted database and Gemini vision are not required to test chat against existing sample records. For local-only testing, use `GUEST_PROFILE_STORE=local`, `CAMERA_FRAME_SINK=disabled`, `VISION_PROVIDER=demo`, and `STORAGE_PROVIDER=local`.
-
-Typing, **Talk to Muse**, **Dictate a message**, **Read replies aloud**, and **Hello** activation remain available. Voice questions are transcribed by Meta; replies use the browser/device voice. Listening requires a supported browser, permission, and a visible page. Chat remains mounted while navigating household screens and clears on reload or guest switch.
-
-Old standalone-page bookmarks redirect to the household assistant. The separate test backend and launch commands have been retired. Follow [Muse setup and testing](docs/MUSE_TESTING.md) for the full runbook and [voice acceptance checks](docs/ACCESSIBILITY.md) for device testing.
-
-## How Muse uses shared household memory
-
-Set `ASSISTANT_PROVIDER=muse` with the same Meta credentials, then use the normal `make api` + `make web` flow at `/` and join with your name. The full local app uses its existing SQLite store and guest sessions. Muse requests a read-only `search_household_memory` tool; FastAPI scopes the lookup to the session's shared demo household, reads fresh records, and returns evidence. Unknown/ambiguous matches get deterministic no-match/clarification responses. Images and observation history remain available; new camera observations carry no contributor identity. Legacy report endpoints remain for compatibility, without manual entry controls in the app.
-
-Location updates come from **Scan room**, and earlier chat answers remain snapshots. The Gemini assistant adapter remains available for optional compatibility testing via `ASSISTANT_PROVIDER=gemini`; it is not used in the Muse flow.
-
-## Host on Vultr and connect SpacetimeDB
-
-Follow the [Vultr + GoDaddy deployment guide](docs/DEPLOYMENT.md). It uses Ubuntu, Nginx and systemd; no local container tooling is needed. SQLite memory, sessions and evidence photos stay in a persistent `DATA_DIR` outside code releases.
-
-For saved guests, the backend can use the team's existing public `user` table through `SPACETIMEDB_PROFILE_TABLE=user`; see [saved-user setup](docs/USERS.md). Each new name gets a separate anonymous database identity. No module publication or owner token is needed for that adapter. The camera has a separate append-only image stream connector; see [image delivery](docs/IMAGE_PIPELINE.md). For live object records set MEMORY_PROVIDER=spacetimedb and follow [the connected workflow](docs/LIVE_WORKFLOW.md); SQLite is retained for app sessions and optional local memory.
-
-The optional `GET /api/connector/search` endpoint and `make connector` gateway remain available for external experiments. The active assistant uses Meta Model API directly.
-
-## Configuration
-
-Copy `.env.example` to `.env`. Defaults work without credentials.
-
-| Setting                                                 | Purpose                                                                                      |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `APP_ENV`                                               | `development` locally or explicit `prototype` guest mode for a demo                          |
-| `GUEST_PROFILE_STORE`                                   | `auto` (default), `local` (reset on API restart), `sqlite`, or `spacetimedb`; profiles only  |
-| `SPACETIMEDB_PROFILE_ACCESS`                            | `private` (default; owner token) or `public` (public guest-table addition; no runtime token) |
-| `SPACETIMEDB_PROFILE_TABLE`                             | `user` for the existing team table, or `guest_profile` for a registry module                 |
-| `SPACETIMEDB_SERVER_TOKEN`                              | Backend-only owner credential for the optional private SpacetimeDB profile registry          |
-| `MEMORY_PROVIDER`                                       | sqlite for local compatibility, spacetimedb for the connected Onyu/shared-memory path        |
-| `SEED_SAMPLE_DATA`                                      | false by default; hide old samples without deleting them                                     |
-| `VISION_ENRICHMENT`                                     | geometry by default; models enables optional Depth Anything/SigLIP                           |
-| `DATA_DIR`                                              | Local database and image directory; relative to the repository root                          |
-| `VISION_PROVIDER`                                       | `demo` or `gemini`                                                                           |
-| `ASSISTANT_PROVIDER`                                    | `disabled` (default), `muse`, or optional `gemini`; independent of vision                    |
-| `MODEL_API_KEY`, `META_MODEL`, `META_VOICE_MODEL`       | Backend-only Muse chat and transcription settings                                            |
-| `GEMINI_CHAT_API_KEY`                                   | Optional previous Gemini assistant key                                                       |
-| `GEMINI_VISION_API_KEY`, `GEMINI_MODEL`                 | Backend-only photo-analysis credentials/model                                                |
-| `GEMINI_API_KEY`                                        | Optional legacy shared-key fallback; role-specific keys take precedence                      |
-| `GEMINI_CHAT_MODEL`                                     | Function-calling model for chat; falls back to `GEMINI_MODEL`                                |
-| `STORAGE_PROVIDER`                                      | `local`; persistent evidence files under DATA_DIR                                            |
-| `CAMERA_FRAME_SINK`                                     | `disabled` (default) or `spacetimedb`; forwards live camera frames to the team image stream  |
-| `CAMERA_SPACETIMEDB_URL`, `CAMERA_SPACETIMEDB_DATABASE` | Image-ingestion server/database; may match the guest database with the user adapter          |
-| `CAMERA_SPACETIMEDB_TOKEN`                              | Optional upload credential; the current public upload reducers accept anonymous calls        |
-| `CORS_ORIGINS`                                          | Explicit comma-separated origins for direct API callers                                      |
-| `MAX_UPLOAD_BYTES`                                      | Per-image limit, default 8 MiB                                                               |
-
-Use a new `DATA_DIR` for a fresh rehearsal without deleting existing memory. Switching image storage does not migrate previously saved photographs; keep a consistent provider for a dataset.
-
-Guests enter a display name at `/` and receive a random 24-hour session. No password or email is collected. The frontend stores the token in browser `sessionStorage`, while SQLite stores only its hash. Reloading the same tab restores it; **Household** offers a **Saved users** picker, a new-user form, and **Leave guest session**. Selecting a saved user restores their ID with a new token. Switching or leaving revokes the prior token, and changing guests clears the assistant conversation. Entering the same name twice creates separate guest IDs; it does not select another user's identity.
-
-**User storage:** `GUEST_PROFILE_STORE=auto` defaults to a temporary in-process user list when no SpacetimeDB server token is configured and profile access remains `private`. Restarting `make api` resets selectable users and invalidates their old sessions; refreshing the browser alone does not. Images and object history are retained separately. New observations do not store a contributor; legacy actor fields are omitted from API and assistant results. Use `sqlite` for local persistence or configure SpacetimeDB for the profile registry. Use the existing public `user` table without publication, or see [adding a separate guest table](spacetimedb/guest-table/README.md), [the separate public users-only registry](spacetimedb/users/README.md), and [saved-user setup](docs/USERS.md). The current team image module now has the additional live-memory tables; the older users-only/private module alternatives remain separate.
-
-All guests share the `demo-home` prototype household. Names support the user picker; they are not attached to new object observations or verified private-household accounts. There is no app subscription or payment flow. Host and model-provider usage have separate billing. `APP_ENV=prototype` explicitly permits this name-only demo; `APP_ENV=production` still rejects startup because private verified-user authentication is not implemented. The old fixed-profile API is retained only in development for compatibility; the UI uses `POST /api/guest/session`.
-
-For phone camera testing, expose the frontend through an HTTPS development tunnel that forwards to port 5173; Vite proxies `/api` to the local backend. Forward the tunnel's Host header as `localhost:5173`, or explicitly allow its exact hostname using `DEV_ALLOWED_HOST` when starting Vite. A phone opening a plain HTTP LAN address cannot use this camera flow.
-
-## Verification
+## Tests
 
 ```bash
-npm run check           # Frontend and SpacetimeDB types, frontend production build
-npm run test:module     # Real SpacetimeDB module permission tests using SDK harness
-make test               # Backend tests; no live cloud credentials used
-```
-
-Optional browser checks:
-
-```bash
+npm run check
+make test
+npm run test:module
 npx playwright install chromium
 npm run test:browser
 ```
 
-To use an existing Chrome installation instead of downloading Chromium:
+Automated checks use local fixtures and mocked provider/remote-database responses. They do not verify live credits, deployed permissions or real iPhone microphone behavior. See [testing and troubleshooting](docs/TESTING.md) for focused runs, browser installation and live acceptance checks.
+
+## Deploy on Azure and use GoDaddy
 
 ```bash
-PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm run test:browser
+.venv/bin/python deploy/azure/package.py
 ```
 
-Browser tests launch the household API on port 8011 and frontend on 5174 and use a separate directory under `.data/browser-tests/`. They cover search, a report shared between two browser sessions, truthful empty states, mobile overflow, live scan intervals/cancellation/permission failures, camera-only OpenCV diagnostics, and assistant UI/error behavior. Meta/Gemini transports and audio responses are mocked in automated tests; these do not establish actual iPhone microphone/camera behavior, speech quality, or live account connectivity.
+This checks/builds React and writes `remi-azure.zip`; it does not deploy. Follow [Azure + GoDaddy](docs/AZURE_APP_SERVICE.md) to configure your Linux Python App Service, backend keys, startup command, DNS and HTTPS.
 
-## Next implementation milestones
+Azure uses **one instance/worker**, `APP_ENV=prototype` and temporary SQLite sessions under `/tmp/remi`. Shared names, images and object memory remain in SpacetimeDB. Persistent App Service network storage is unsuitable for this SQLite session database. A fresh session may be needed after server replacement. [Deployment options](docs/DEPLOYMENT.md) also documents the optional Vultr host.
 
-1. Keep name-only guest mode for the prototype; add verified sign-in and private household membership if the project later needs private accounts.
-2. Replace API polling with appropriate live subscriptions if needed; the camera/object/Muse SpacetimeDB path is already connected.
-3. Extract capture processing into durable jobs with retries, leasing, and idempotent result commits.
-4. Add explicit object identity confirmation across captures.
-5. Verify Muse chat/voice and Gemini image analysis with their respective project credentials, then deploy the API/frontend to Vultr.
-6. Rehearse with real household objects on two phones; add a domain after deployment works.
+## Repository
 
-Full SLAM, metric 3D navigation, closed-browser/background-phone capture, and physical direction arrows are outside this starter's scope.
+```text
+apps/web/                  React, TypeScript, Vite, CSS and SVG room illustrations
+services/api/              FastAPI, sessions, providers and API/worker unit tests
+services/worker/           Image processing, relations and optional local ML stages
+camera_capture/            Shared image-quality/wire helpers and standalone experiments
+  stream_module/           Team public user/image/object-memory database module
+spacetimedb/               Alternative private-household and guest-registry modules/tests
+contracts/                 API and coordinate contract
+tests/browser/             Current UI feature tests; shared mocks in support/
+scripts/                   Opt-in provider checks and experimental runners
+deploy/                    Azure packaging and optional Vultr configuration
+demo/                      Demo script and clearly labeled sample illustration
+docs/                      Setup, configuration, workflow, testing and hosting
+```
 
-Licensed under [MIT](LICENSE).
+Start with [the documentation index](docs/README.md). This is a shared hackathon prototype: display names are unverified, the team database is public, and the app is not a private-household authentication system or a walking-navigation aid.

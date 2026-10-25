@@ -19,6 +19,7 @@ export async function openAssistant(page: Page) {
       json: { ...health, assistant_provider: 'muse' },
     }),
   );
-  await page.goto('/?view=assistant');
-  await joinAsGuest(page, 'Muse tester');
+  await page.goto('/');
+  await joinAsGuest(page, 'Assistant tester');
+  await page.getByRole('button', { name: 'Open Remi chat', exact: true }).click();
 }

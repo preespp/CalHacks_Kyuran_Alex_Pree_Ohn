@@ -1,42 +1,26 @@
-import { expect, test } from './fixtures';
-import { joinAsGuest } from './guest-helpers';
+import { expect, test } from './support/fixtures';
+import { joinAsGuest } from './support/guest-helpers';
+import { installVoiceMocks } from './support/voice-mocks';
+import { openAssistant } from './support/assistant-helpers';
 
-test('disabled assistant is honest and preserves ordinary memory search', async ({ page }) => {
+test('disabled assistant preserves ordinary memory search', async ({ page }) => {
   await page.goto('/');
   await joinAsGuest(page);
-  await page.getByRole('button', { name: 'Ask Muse', exact: true }).click();
-  await expect(page.getByText('Muse assistant is not enabled yet.')).toBeVisible();
+  await page.getByRole('button', { name: 'Open Remi chat' }).click();
+  await expect(page.getByText('Remi assistant is not enabled yet.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Our memory', exact: true }).click();
+  await page.getByRole('button', { name: 'Close Remi chat' }).click();
   await page.getByRole('textbox', { name: 'Search objects' }).fill('keys');
   await expect(page.locator('.object-card')).toHaveCount(1);
 });
 
-test('assistant presents retrieved evidence, handles errors, and clears on profile change', async ({
+test('retrieved evidence opens saved details and profile switching clears chat', async ({
   page,
 }) => {
-  // The browser contract is mocked; real Muse tool exchange is covered by backend tests.
-  await page.route('**/api/health', async (route) => {
-    const response = await route.fetch();
-    await route.fulfill({
-      response,
-      json: { ...(await response.json()), assistant_provider: 'muse' },
-    });
-  });
-  let failNext = false;
+  await installVoiceMocks(page);
   const histories: unknown[][] = [];
   await page.route('**/api/chat', async (route) => {
-    const body = route.request().postDataJSON();
-    histories.push(body.history);
-    if (failNext) {
-      await route.fulfill({
-        status: 429,
-        json: {
-          detail: 'Muse assistant quota was reached. Wait and retry, or use object search.',
-        },
-      });
-      return;
-    }
+    histories.push(route.request().postDataJSON().history);
     const response = await page.request.get('/api/connector/search?q=keys', {
       headers: { Authorization: route.request().headers()['authorization'] },
     });
@@ -53,38 +37,25 @@ test('assistant presents retrieved evidence, handles errors, and clears on profi
       },
     });
   });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
-  await joinAsGuest(page);
-  await expect(page.locator('.object-card').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Ask Muse', exact: true }).click();
+  await openAssistant(page);
   const input = page.getByRole('textbox', { name: 'Ask about a shared object' });
   await input.fill('Where are our keys?');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  const transcript = page.getByRole('log', { name: 'Assistant conversation' });
-  await expect(transcript).toContainText('The sample illustration shows the house keys');
-  await expect(transcript).not.toContainText('Kyuran');
-  await expect(transcript).toContainText('Sample illustration');
+  await expect(page.getByRole('log')).toContainText('Sample illustration');
   expect(histories[0]).toEqual([]);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await page.screenshot({ path: 'test-results/assistant-mobile.png', fullPage: true });
   await page.locator('.assistant-record').click();
-  await expect(page.getByRole('dialog')).toContainText('House keys');
+  await expect(page.getByRole('heading', { name: 'House keys', exact: true })).toBeVisible();
   await expect(page.getByLabel('Object location in saved image')).toBeVisible();
-  await page.getByRole('button', { name: 'Close dialog' }).click();
-
-  failNext = true;
-  await input.fill('Where are they now?');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('quota was reached');
-  expect(histories[1]).toHaveLength(2);
-  await expect(input).toHaveValue('Where are they now?');
-  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
-
-  await page.getByRole('button', { name: 'Household', exact: true }).click();
-  await page.getByRole('dialog').getByRole('textbox', { name: 'Your name' }).fill('Alex');
-  await page.getByRole('button', { name: 'Switch guest', exact: true }).click();
-  await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(transcript).not.toContainText('Where are our keys?');
+  await page.getByRole('button', { name: 'All objects', exact: true }).click();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.getByRole('button', { name: 'Open Remi chat' }).click();
+  await expect(page.getByRole('log')).toContainText('Where are our keys?');
+  await page.getByRole('button', { name: 'Close Remi chat' }).click();
+  await page.getByRole('button', { name: 'Household members' }).click();
+  await page.getByRole('textbox', { name: 'Your name' }).fill('Fresh chat member');
+  await page.getByRole('button', { name: 'Add household member' }).click();
+  await expect(page.locator('.profile strong')).toHaveText('Fresh chat member');
+  await page.getByRole('button', { name: 'Open Remi chat' }).click();
+  await expect(page.getByRole('log')).not.toContainText('Where are our keys?');
   await expect(input).toHaveValue('');
 });

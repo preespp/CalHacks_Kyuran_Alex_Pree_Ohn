@@ -1,11 +1,9 @@
-# Onyu’s spatial vision pipeline and live integration
+# Vision JSON and optional enrichment
 
-The connected implementation and measured verification are documented in [LIVE_WORKFLOW.md](LIVE_WORKFLOW.md). This replaces the earlier standalone prototype description, example payloads and unverified performance claims.
+This is a reference to the current worker representation, not a separate production architecture or performance guarantee. See [architecture](ARCHITECTURE.md) and [the image pipeline](IMAGE_PIPELINE.md).
 
-`services/worker/pipeline.py` now receives the exact saved camera JPEG from SpacetimeDB, calls Gemini once for labels/appearance/location/normalized boxes, derives zones and image-plane relations, and produces validated records for the atomic shared-memory commit. The database retains actual image references and capture timestamps; no example household/photo/contributor is inserted.
+`services/worker/pipeline.py` returns tracked-object dictionaries with object ID, label, appearance, current room/summary, updated timestamp, latest sighting and optional embedding. A sighting includes capture ID, timestamp, photo reference, normalized box, image zones, optional relative depth/rank and relations. Durable history belongs to `object_sighting`; the worker payload is bounded to the current sighting.
 
-`VISION_ENRICHMENT=geometry` uses real Gemini results and geometric relations without downloading local neural models. Exact unique label/appearance matches can reuse object IDs conservatively. `VISION_ENRICHMENT=models` enables the optional Depth Anything V2 Small and SigLIP crop-embedding stages after installing the API spatial extra. Their latency and hardware requirements must be measured on the deployment machine; no fixed FPS or sub-200ms guarantee is made.
+`VISION_ENRICHMENT=geometry` uses Gemini detections, image-plane zones/relations and conservative unique label/appearance association. Local neural depth and embeddings are absent. `models` enables optional Depth Anything/SigLIP stages after installing the spatial extra. Their hardware use, startup time and latency need device measurement.
 
-Depth values are relative within an image. Rankings may identify the closest observed object in that photo; they do not provide calibrated meters, room coordinates, camera pose or walking directions. The experimental RealtimeStreamEngine no longer converts relative depth to a fabricated metric distance. It remains separate from the web app’s bounded camera-job callback.
-
-The shared result schema uses object_memory for current records, object_sighting for history and vision_capture for retained evidence. Muse and the household page read the same remote records. App bearer sessions remain local SQLite hashes; guest names remain in the separate user adapter. Object observations contain no contributor attribution.
+Relative depth does not establish metric distance, room coordinates, camera pose or walking directions. The experimental video runner is separate from the web API's camera-job callback. There is no guaranteed FPS or fixed sub-second inference budget. The frontend's category scenes are SVG illustrations, not a rendering of this JSON as a calibrated reconstruction.

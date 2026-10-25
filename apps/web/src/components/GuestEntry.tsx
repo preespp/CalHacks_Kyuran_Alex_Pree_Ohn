@@ -8,11 +8,13 @@ export default function GuestEntry({
   onSelect,
   currentUserId,
   switching = false,
+  submitLabel,
 }: {
   onJoin: (name: string) => Promise<void>;
   onSelect: (id: string) => Promise<void>;
   currentUserId?: string;
   switching?: boolean;
+  submitLabel?: string;
 }) {
   const [name, setName] = useState('');
   const inputId = useId();
@@ -143,7 +145,7 @@ export default function GuestEntry({
           />
           <button className="primary-button" disabled={busy || !name.trim()} type="submit">
             {busy ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}
-            {switching ? 'Switch guest' : 'Continue as guest'}
+            {submitLabel ?? (switching ? 'Switch guest' : 'Continue as guest')}
           </button>
         </div>
       </form>

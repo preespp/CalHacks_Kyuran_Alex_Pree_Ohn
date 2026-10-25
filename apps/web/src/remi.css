@@ -1,0 +1,700 @@
+/* Restored assistant and member controls are scoped to the existing UI. */
+.remi-controls {
+  --green: var(--forest-dark);
+  --line: var(--card-border);
+  min-width: 0;
+}
+:where(.remi-controls)
+  .capture-panel.camera-compact
+  > :not(.capture-brief):not(.error):not(.camera-preview):not(.capture-actions) {
+  display: none;
+}
+:where(.remi-controls) .camera-compact > .error {
+  display: block;
+  margin: 0;
+  font-size: 12px;
+}
+:where(.remi-controls) .assistant-compact {
+  padding: 8px;
+}
+:where(.remi-controls) .assistant-compact > *:not(.voice-power):not(.error) {
+  display: none;
+}
+:where(.remi-controls) .voice-power {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+:where(.remi-controls) .voice-power > span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+:where(.remi-controls) .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #dce2d4;
+  border-radius: 8px;
+  padding: 11px 13px;
+  background: #fafbf7;
+  font-size: 11px;
+}
+:where(.remi-controls) .secondary-button:hover {
+  background: #f0f3e9;
+}
+:where(.remi-controls) .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+:where(.remi-controls) .section-heading h2 {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.3px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+:where(.remi-controls) .section-heading p {
+  font-size: 10px;
+  color: #979d8f;
+  margin-top: 6px;
+}
+:where(.remi-controls) .fine-print {
+  font-size: 10px;
+  color: #99a28e;
+  line-height: 1.7;
+  margin-top: 14px;
+}
+:where(.remi-controls) .notice {
+  border: 1px solid #e0e6d4;
+  border-radius: 9px;
+  background: #edf2e2;
+  padding: 14px;
+  margin: 18px 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #7e8b6c;
+}
+:where(.remi-controls) .notice strong {
+  color: #5f7550;
+  font-weight: 600;
+}
+:where(.remi-controls) .notice p {
+  margin-top: 4px;
+}
+:where(.remi-controls) .field-label {
+  display: grid;
+  gap: 7px;
+  margin: 16px 0 0;
+  font-size: 11px;
+  color: #78876b;
+}
+:where(.remi-controls) .field-label input,
+:where(.remi-controls) .field-label select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #dbe2cf;
+  border-radius: 7px;
+  background: #fffef9;
+  color: #526248;
+  font-size: 13px;
+}
+:where(.remi-controls) .error {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #ad644b;
+  margin-top: 14px;
+}
+:where(.remi-controls) .member-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+:where(.remi-controls) .member-row {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  gap: 13px;
+  padding: 13px;
+  border: 1px solid #e1e7d7;
+  border-radius: 8px;
+  width: 100%;
+}
+:where(.remi-controls) .member-row > span:nth-child(2) {
+  flex: 1;
+}
+:where(.remi-controls) .member-row strong {
+  display: block;
+  font-size: 13px;
+}
+:where(.remi-controls) .member-row small {
+  display: block;
+  font-size: 10px;
+  color: #929d85;
+  margin-top: 5px;
+}
+:where(.remi-controls) .member-row:hover {
+  background: #f1f5e8;
+}
+:where(.remi-controls) .detail-content > p:not(.fine-print) {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #87977b;
+}
+:where(.remi-controls) .spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 760px) {
+  :where(.remi-controls) .section-heading {
+    align-items: flex-start;
+    gap: 10px;
+  }
+  :where(.remi-controls) .section-heading h2 {
+    font-size: 15px;
+  }
+  :where(.remi-controls) .section-heading p {
+    font-size: 9px;
+    line-height: 1.7;
+    max-width: 190px;
+  }
+}
+:where(.remi-controls) .assistant-panel {
+  max-width: 850px;
+  padding: 25px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: white;
+}
+:where(.remi-controls) .guest-entry {
+  max-width: 850px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 25px;
+}
+:where(.remi-controls) .guest-entry > p,
+:where(.remi-controls) .guest-entry > form {
+  margin-top: 16px;
+}
+:where(.remi-controls) .guest-entry > p {
+  line-height: 1.6;
+}
+:where(.remi-controls) .guest-entry a {
+  text-decoration: underline;
+}
+:where(.remi-controls) .guest-directory {
+  border-block: 1px solid var(--line);
+  margin-top: 20px;
+  padding-block: 18px;
+}
+:where(.remi-controls) .guest-directory .member-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+:where(.remi-controls) .guest-directory > p,
+:where(.remi-controls) .guest-directory > button {
+  margin-top: 12px;
+}
+:where(.remi-controls) .wake-controls {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+:where(.remi-controls) .wake-controls p {
+  margin-top: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(.remi-controls) .voice-session-active .voice-orb {
+    animation: none;
+  }
+}
+:where(.remi-controls) .voice-session {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  background: #f2f6ed;
+  border: 1px solid #dce6d4;
+  border-radius: 14px;
+  margin-top: 24px;
+  padding: 18px;
+}
+:where(.remi-controls) .voice-session-copy {
+  flex: 1;
+  min-width: 150px;
+}
+:where(.remi-controls) .voice-session-copy > strong {
+  font-size: 14px;
+}
+:where(.remi-controls) .voice-session-copy p {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 5px;
+  color: #65705e;
+}
+:where(.remi-controls) .voice-session-copy meter {
+  width: 100%;
+  height: 10px;
+  margin-top: 9px;
+  accent-color: var(--green);
+}
+:where(.remi-controls) .voice-orb {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #dce8d1;
+  color: var(--green);
+  display: grid;
+  place-items: center;
+}
+:where(.remi-controls) .voice-session-active .voice-orb {
+  animation: voice-pulse 1.6s infinite ease-in-out;
+}
+@keyframes voice-pulse {
+  50% {
+    box-shadow: 0 0 0 9px #dce8d166;
+  }
+}
+@media (max-width: 760px) {
+  :where(.remi-controls) .voice-session {
+    gap: 11px;
+    padding: 14px;
+  }
+  :where(.remi-controls) .voice-session > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+:where(.remi-controls) .voice-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+:where(.remi-controls) .voice-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+:where(.remi-controls) .voice-toggle input {
+  accent-color: var(--green);
+}
+:where(.remi-controls) .voice-settings {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+:where(.remi-controls) .voice-settings summary {
+  cursor: pointer;
+  color: var(--green);
+}
+:where(.remi-controls) .voice-settings-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin: 16px 0;
+}
+:where(.remi-controls) .voice-settings-fields .field-label {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 100%;
+}
+:where(.remi-controls) .voice-settings-fields select,
+:where(.remi-controls) .voice-settings-fields input {
+  width: 100%;
+}
+:where(.remi-controls) .voice-settings-fields input[type='range'] {
+  padding: 8px 0;
+  accent-color: var(--green);
+}
+:where(.remi-controls) .speech-reply {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--green);
+  padding: 8px 0 0;
+}
+:where(.remi-controls) .assistant-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+:where(.remi-controls) .assistant-panel > .fine-print {
+  margin: 15px 0;
+}
+:where(.remi-controls) .assistant-transcript {
+  max-height: 560px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+:where(.remi-controls) .assistant-welcome {
+  text-align: center;
+  padding: 35px 10px;
+  color: var(--green);
+}
+:where(.remi-controls) .assistant-welcome h3 {
+  margin: 12px 0 8px;
+}
+:where(.remi-controls) .assistant-welcome p {
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+:where(.remi-controls) .assistant-message {
+  margin: 14px 0;
+  padding: 18px;
+  background: #f5f7f1;
+  border-radius: 12px;
+}
+:where(.remi-controls) .assistant-message > strong {
+  font-size: 12px;
+  color: var(--green);
+}
+:where(.remi-controls) .assistant-message > p {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.7;
+  margin-top: 7px;
+}
+:where(.remi-controls) .assistant-message-user {
+  margin-left: 25px;
+  background: #edf2e9;
+}
+:where(.remi-controls) .assistant-evidence {
+  display: grid;
+  gap: 10px;
+  margin-top: 15px;
+}
+:where(.remi-controls) .assistant-evidence small {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #65705e;
+}
+:where(.remi-controls) .assistant-record {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 13px;
+}
+:where(.remi-controls) .assistant-record > strong {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+:where(.remi-controls) .assistant-record > span {
+  font-size: 12px;
+  line-height: 1.6;
+}
+:where(.remi-controls) .assistant-pending {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  padding: 15px 0;
+}
+:where(.remi-controls) .assistant-form {
+  margin-top: 20px;
+}
+:where(.remi-controls) .assistant-compose {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+:where(.remi-controls) .assistant-compose input {
+  flex: 1;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 16px;
+}
+@media (max-width: 760px) {
+  :where(.remi-controls) .assistant-panel {
+    padding: 17px;
+  }
+  :where(.remi-controls) .assistant-panel .section-heading h2 {
+    font-size: 18px;
+  }
+  :where(.remi-controls) .assistant-panel .section-heading p {
+    font-size: 11px;
+  }
+  :where(.remi-controls) .assistant-panel .secondary-button {
+    font-size: 11px;
+    padding: 10px;
+  }
+  :where(.remi-controls) .assistant-message {
+    padding: 13px;
+  }
+  :where(.remi-controls) .assistant-message-user {
+    margin-left: 10px;
+  }
+  :where(.remi-controls) .assistant-compose {
+    flex-wrap: wrap;
+  }
+  :where(.remi-controls) .assistant-compose input {
+    flex-basis: 100%;
+  }
+}
+
+/* The scan can grow without extending beyond a short laptop viewport. */
+.modal-backdrop {
+  overflow-y: auto;
+}
+.scan-modal {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.scan-modal .modal-head {
+  position: sticky;
+  top: -26px;
+  z-index: 2;
+  background: #faf9f5;
+  padding-block: 8px;
+}
+.sidebar {
+  overflow-y: auto;
+  height: 100dvh;
+}
+.sidebar > * {
+  flex-shrink: 0;
+}
+.profile {
+  width: 100%;
+  text-align: left;
+}
+.profile > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sidebar-voice {
+  padding: 8px 10px 16px;
+}
+.sidebar-voice:empty {
+  display: none;
+}
+.sidebar-voice .voice-settings {
+  margin: 12px 0 0;
+  padding: 12px 0;
+  border-width: 1px 0 0;
+  border-radius: 0;
+}
+.sidebar-voice .voice-settings summary {
+  font-size: 13px;
+  font-weight: 600;
+}
+.sidebar-voice .voice-settings-fields {
+  display: grid;
+  gap: 12px;
+}
+.sidebar-voice .field-label {
+  margin: 0;
+}
+.sidebar-voice .field-label select {
+  min-width: 0;
+  font-size: 12px;
+}
+.sidebar-voice .fine-print {
+  font-size: 11px;
+  color: #69675f;
+}
+.sidebar-voice .voice-settings-fields input[type='range'] {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+}
+.remi-chat-dialog {
+  margin: auto;
+  padding: 24px;
+  width: min(820px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--text-primary);
+}
+.remi-chat-dialog::backdrop {
+  background: #15201bbf;
+  backdrop-filter: blur(8px);
+}
+.remi-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.remi-controls .assistant-panel {
+  max-width: none;
+  padding: 20px;
+}
+.remi-controls .assistant-panel .section-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.remi-controls .voice-power {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 15px;
+}
+.remi-controls .voice-power > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.remi-controls .primary-button,
+.remi-controls .secondary-button {
+  min-height: 40px;
+}
+.remi-controls .assistant-compose {
+  margin-top: 8px;
+}
+.remi-controls button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.remi-controls .fine-print {
+  color: #69675f;
+}
+.household-members .guest-entry {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.household-members .guest-entry h2 {
+  font-size: 17px;
+}
+.household-members .assistant-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.household-members .assistant-compose input {
+  width: 100%;
+}
+.household-members .assistant-compose .primary-button {
+  justify-self: start;
+  width: auto;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.household-members .member-row {
+  width: 100%;
+}
+.household-members .member-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.partner-logos > span {
+  font-size: 17px;
+  font-weight: 600;
+}
+button:focus-visible,
+summary:focus-visible,
+select:focus-visible {
+  outline: 2px solid #719346;
+  outline-offset: 3px;
+}
+@media (max-width: 768px) {
+  .app-shell {
+    flex-direction: column;
+  }
+  .sidebar {
+    display: flex;
+    position: static;
+    width: 100%;
+    height: auto;
+    padding: 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--sidebar-border);
+  }
+  .brand {
+    padding-bottom: 16px;
+  }
+  .sidebar .nav-list {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .sidebar .nav-item {
+    flex: 1 1 40%;
+    width: auto;
+  }
+  .sidebar-bottom {
+    margin-top: 12px;
+  }
+  .sidebar-bottom > .storage {
+    display: none;
+  }
+  .sidebar-voice {
+    padding: 8px;
+  }
+  .remi-chat-dialog {
+    padding: 14px;
+  }
+  .remi-controls .assistant-panel {
+    padding: 14px;
+  }
+  .modal-backdrop {
+    padding: 12px;
+  }
+  .scan-modal {
+    max-height: calc(100dvh - 24px);
+    padding: 20px;
+  }
+  .scan-modal .modal-head {
+    top: -20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .remi-controls *,
+  .remi-controls *::before,
+  .remi-controls *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+.partner-logos {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+@media (max-width: 768px) {
+  .partner-logos > span {
+    white-space: normal;
+    text-align: center;
+    font-size: 14px;
+  }
+}
+@media (max-width: 768px) {
+  .site-footer {
+    margin-inline: -20px;
+    padding-inline: 20px;
+  }
+}

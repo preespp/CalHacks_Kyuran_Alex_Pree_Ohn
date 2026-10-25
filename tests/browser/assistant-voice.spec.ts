@@ -1,8 +1,8 @@
-import { expect, test } from './fixtures';
-import { installVoiceMocks } from './voice-mocks';
-import { chatReply, openAssistant } from './assistant-helpers';
+import { expect, test } from './support/fixtures';
+import { installVoiceMocks } from './support/voice-mocks';
+import { chatReply, openAssistant } from './support/assistant-helpers';
 
-test('Ask Muse supports typing, bounded context, and clearing the conversation', async ({
+test('Ask Remi supports typing, bounded context, and clearing the conversation', async ({
   page,
 }) => {
   const paths: string[] = [];
@@ -15,18 +15,19 @@ test('Ask Muse supports typing, bounded context, and clearing the conversation',
     messages.push(route.request().postDataJSON());
     return route.fulfill({
       json: chatReply(
-        messages.length === 1 ? 'Hello, I am Muse.' : 'Yes, that was our earlier greeting.',
+        messages.length === 1 ? 'Hello, I am Remi.' : 'Yes, that was our earlier greeting.',
       ),
     });
   });
+  await installVoiceMocks(page);
   await openAssistant(page);
-  await expect(page.getByRole('heading', { name: 'Just ask your household.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ask Remi', exact: true })).toBeVisible();
   const input = page.getByRole('textbox', { name: 'Ask about a shared object' });
   await expect(input).toBeEnabled();
   expect(messages).toHaveLength(0);
   await input.fill('Hello');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByRole('log')).toContainText('Hello, I am Muse.');
+  await expect(page.getByRole('log')).toContainText('Hello, I am Remi.');
   await input.fill('Do you remember our greeting?');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('log')).toContainText('our earlier greeting');
@@ -36,7 +37,7 @@ test('Ask Muse supports typing, bounded context, and clearing the conversation',
   await expect(page.getByRole('log')).not.toContainText('our earlier greeting');
 });
 
-test('Muse microphone transcribes to editable text, reads replies, and keeps typing usable', async ({
+test('Remi microphone transcribes to editable text, reads replies, and keeps typing usable', async ({
   page,
 }) => {
   await installVoiceMocks(page);
@@ -47,7 +48,7 @@ test('Muse microphone transcribes to editable text, reads replies, and keeps typ
     await route.fulfill({ json: { provider: 'muse', text: 'Tell me a joke.' } });
   });
   await page.route('**/api/chat', (route) =>
-    route.fulfill({ json: chatReply('Here is a short joke from Muse.') }),
+    route.fulfill({ json: chatReply('Here is a short joke from Remi.') }),
   );
   await page.setViewportSize({ width: 390, height: 844 });
   await openAssistant(page);
@@ -67,7 +68,7 @@ test('Muse microphone transcribes to editable text, reads replies, and keeps typ
   await expect(page.getByRole('checkbox', { name: 'Read replies aloud' })).toBeChecked();
   await input.fill('Tell me a short joke.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByRole('log')).toContainText('short joke from Muse');
+  await expect(page.getByRole('log')).toContainText('short joke from Remi');
   await expect
     .poll(() =>
       page.evaluate(
@@ -104,15 +105,16 @@ test('Muse microphone transcribes to editable text, reads replies, and keeps typ
   ).toBeGreaterThanOrEqual(2);
 });
 
-test('Ask Muse reports quota failure without substituting an answer', async ({ page }) => {
+test('Ask Remi reports quota failure without substituting an answer', async ({ page }) => {
   let calls = 0;
   await page.route('**/api/chat', (route) => {
     calls++;
     return route.fulfill({
       status: 429,
-      json: { detail: 'Muse quota or credit limit was reached.' },
+      json: { detail: 'Remi quota or credit limit was reached.' },
     });
   });
+  await installVoiceMocks(page);
   await openAssistant(page);
   await page.getByRole('textbox', { name: 'Ask about a shared object' }).fill('Hello');
   await page.getByRole('button', { name: 'Send', exact: true }).click();

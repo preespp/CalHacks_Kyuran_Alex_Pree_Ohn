@@ -241,6 +241,8 @@ viewer_3d_*
 *.mp4
 !restroom.mp4
 *.zip
+# Private Azure settings copied from the placeholder template.
+deploy/azure/appsettings.local.json
 objects_memory_*.json
 output_memory_*.json
 panorama_*.jpg
